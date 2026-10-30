@@ -23,6 +23,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
+import { signIn } from '@/lib/auth';
+import { toastError } from '@/lib/errors';
+import { toast } from 'sonner';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid campus email address'),
@@ -32,8 +35,9 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function SignIn() {
-  const { setRole } = useAuth();
+  const { setRole, refresh } = useAuth();
   const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedDemoRole, setSelectedDemoRole] = useState<'institution' | 'user'>('institution');
 
   const form = useForm<LoginFormValues>({
@@ -44,13 +48,28 @@ export function SignIn() {
     },
   });
 
-  const onSubmit = (values: LoginFormValues) => {
-    // In demo mode, sign in seamlessly using selected demo role
-    setRole(selectedDemoRole);
-    if (selectedDemoRole === 'institution') {
-      navigate('/app/institution');
-    } else {
-      navigate('/app/user');
+  const onSubmit = async (values: LoginFormValues) => {
+    if (import.meta.env.VITE_USE_MOCKS === 'true') {
+      setRole(selectedDemoRole);
+      navigate(selectedDemoRole === 'institution' ? '/app/institution' : '/app/user');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const session = await signIn(values.email, values.password);
+      await refresh();
+      toast.success('Signed in successfully');
+      const metaRole = session.user.user_metadata?.role;
+      if (metaRole === 'institution_admin') {
+        navigate('/app/institution');
+      } else {
+        navigate('/app/user');
+      }
+    } catch (err) {
+      toastError(err, 'Failed to sign in. Please verify your campus credentials.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -58,7 +77,6 @@ export function SignIn() {
     setRole(role);
     navigate(role === 'institution' ? '/app/institution' : '/app/user');
   };
-
   return (
     <div className="w-full max-w-md animate-fade-in">
       <Card className="surface border-border/80 shadow-xl">
@@ -164,8 +182,8 @@ export function SignIn() {
                 )}
               />
 
-              <Button type="submit" className="w-full gap-2 font-semibold shadow-sm mt-2">
-                <span>Continue to Dashboard</span>
+              <Button type="submit" disabled={isSubmitting} className="w-full gap-2 font-semibold shadow-sm mt-2">
+                <span>{isSubmitting ? 'Signing in...' : 'Continue to Dashboard'}</span>
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </form>

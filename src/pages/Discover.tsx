@@ -28,15 +28,43 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useResources } from '@/hooks/useResources';
+import { useBookings } from '@/hooks/useBookings';
+import { useAuth } from '@/providers/AuthProvider';
 import { Resource } from '@/lib/types';
+import { CampusShareError } from '@/lib/supabase';
+import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 
 export function Discover() {
-  const { resources, loading } = useResources();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [onlyAvailable, setOnlyAvailable] = useState<boolean>(false);
+  const [onlyEligible, setOnlyEligible] = useState<boolean>(false);
   const [selectedResource, setSelectedResource] = useState<Resource | null>(null);
+
+  // Booking modal state
+  const [purpose, setPurpose] = useState('Academic research & project work');
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 2, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 5, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [bookingState, setBookingState] = useState<'idle' | 'submitting' | 'slot_taken' | 'success'>('idle');
+
+  const { resources, loading } = useResources({
+    searchTerm,
+    category: selectedCategory,
+    availableOnly: onlyAvailable,
+    eligibleOnly: onlyEligible,
+  });
+
+  const { requestBooking, joinWaitlist } = useBookings();
+  const { isVerified, verifiedQualificationIds } = useAuth();
 
   const categories = [
     'All',
@@ -50,27 +78,65 @@ export function Discover() {
     'Academic Books',
   ];
 
-  const filteredResources = useMemo(() => {
-    return resources.filter((res) => {
-      const matchesSearch =
-        res.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        res.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        res.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory =
-        selectedCategory === 'All' || res.category === selectedCategory;
-      const matchesAvailable = !onlyAvailable || res.status === 'available';
+  const filteredResources = resources;
 
-      return matchesSearch && matchesCategory && matchesAvailable;
-    });
-  }, [resources, searchTerm, selectedCategory, onlyAvailable]);
+  const handleReserve = async (res: Resource) => {
+    if (import.meta.env.VITE_USE_MOCKS === 'true') {
+      toast.success(`Reservation submitted for ${res.title}`, {
+        description: 'Your booking has been queued for faculty review.',
+      });
+      setSelectedResource(null);
+      return;
+    }
 
-  const handleReserveDemo = (res: Resource) => {
-    toast.success(`Reservation submitted for ${res.title}`, {
-      description: 'Your booking has been queued for faculty review.',
-    });
-    setSelectedResource(null);
+    try {
+      setBookingState('submitting');
+      const startIso = new Date(startDate).toISOString();
+      const endIso = new Date(endDate).toISOString();
+
+      const newBk = await requestBooking({
+        resourceId: res.id,
+        start: startIso,
+        end: endIso,
+        purpose,
+      });
+
+      setBookingState('success');
+      if (newBk.status === 'approved') {
+        toast.success('Booking auto-approved! Ready for pickup.');
+      } else {
+        toast.success('Reservation requested! Queued for faculty approval.');
+      }
+      setTimeout(() => {
+        setSelectedResource(null);
+        setBookingState('idle');
+      }, 1200);
+    } catch (err) {
+      if (err instanceof CampusShareError && err.code === 'slot_taken') {
+        setBookingState('slot_taken');
+        toast.error('This time slot is already booked. You can join the priority waitlist.');
+      } else {
+        setBookingState('idle');
+        toastError(err, 'Failed to reserve resource');
+      }
+    }
   };
 
+  const handleJoinWaitlist = async () => {
+    if (!selectedResource) return;
+    try {
+      await joinWaitlist({
+        resourceId: selectedResource.id,
+        start: new Date(startDate).toISOString(),
+        end: new Date(endDate).toISOString(),
+      });
+      toast.success('You have been added to the waitlist queue!');
+      setSelectedResource(null);
+      setBookingState('idle');
+    } catch (err) {
+      toastError(err, 'Failed to join waitlist');
+    }
+  };
   return (
     <div className="space-y-6">
       <PageHeader
@@ -221,24 +287,86 @@ export function Discover() {
                   ))}
                 </div>
               </div>
+
+              {/* Reservation Schedule Window */}
+              <div className="space-y-3 pt-1 border-t border-border/60">
+                <span className="text-xs font-bold text-foreground block">
+                  Reservation Window:
+                </span>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-[11px] text-muted-foreground block mb-1">Start Time</label>
+                    <input
+                      type="datetime-local"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-muted-foreground block mb-1">Return Time</label>
+                    <input
+                      type="datetime-local"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] text-muted-foreground block mb-1">Purpose / Coursework</label>
+                  <input
+                    type="text"
+                    value={purpose}
+                    onChange={(e) => setPurpose(e.target.value)}
+                    placeholder="e.g. Lab experiment or student project"
+                    className="w-full h-8 px-2 rounded-md border border-input bg-background text-xs"
+                  />
+                </div>
+              </div>
+
+              {bookingState === 'slot_taken' && (
+                <div className="p-3 rounded-xl border border-warning/40 bg-warning/10 text-xs space-y-2">
+                  <p className="font-semibold text-foreground">
+                    Slot unavailable: Another borrower has reserved this equipment during the selected window.
+                  </p>
+                  <p className="text-muted-foreground text-[11px]">
+                    You can enter the priority waitlist. If the current borrower releases their slot, you will be offered immediate reservation.
+                  </p>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="p-6 pt-0 gap-2 sm:gap-0">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedResource(null)}
+                onClick={() => {
+                  setSelectedResource(null);
+                  setBookingState('idle');
+                }}
               >
                 Close
               </Button>
-              <Button
-                size="sm"
-                onClick={() => handleReserveDemo(selectedResource)}
-                className="font-semibold gap-1.5"
-              >
-                <Calendar className="h-3.5 w-3.5" />
-                <span>Reserve for Checkout</span>
-              </Button>
+              {bookingState === 'slot_taken' ? (
+                <Button
+                  size="sm"
+                  onClick={handleJoinWaitlist}
+                  className="font-semibold bg-warning hover:bg-warning/90 text-warning-foreground gap-1.5"
+                >
+                  <span>Join Priority Waitlist</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={bookingState === 'submitting'}
+                  onClick={() => handleReserve(selectedResource)}
+                  className="font-semibold gap-1.5"
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  <span>{bookingState === 'submitting' ? 'Submitting...' : 'Reserve for Checkout'}</span>
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

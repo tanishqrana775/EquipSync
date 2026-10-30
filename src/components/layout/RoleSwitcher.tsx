@@ -13,6 +13,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 
 export function RoleSwitcher() {
+  if (import.meta.env.VITE_DEMO_MODE !== 'true') {
+    return null;
+  }
   const { role, setRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

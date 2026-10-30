@@ -37,12 +37,49 @@ import { useResources } from '@/hooks/useResources';
 import { Resource, ResourceCategory } from '@/lib/types';
 
 export function ResourceManagement() {
-  const { resources } = useResources();
+  const {
+    resources,
+    loading,
+    createResource,
+    toggleAvailability,
+    retireResource,
+    uploadEvidence,
+  } = useResources();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
+  // New asset form inputs
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState('DSLR Cameras');
+  const [newTagId, setNewTagId] = useState('');
+  const [newLocation, setNewLocation] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+
   const categories = ['All', 'Laptops', 'DSLR Cameras', 'Lab Equipment', 'Seminar Halls', 'Projectors', 'Classrooms', 'Sports Equipment', 'Academic Books'];
+
+  const handleCreateAsset = async () => {
+    if (!newTitle.trim()) {
+      return;
+    }
+    try {
+      setIsCreating(true);
+      await createResource({
+        name: newTitle,
+        kind: 'equipment',
+        category: newCategory,
+        asset_tag: newTagId || undefined,
+        location: newLocation || undefined,
+      });
+      setAddDialogOpen(false);
+      setNewTitle('');
+      setNewTagId('');
+      setNewLocation('');
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   const filteredResources = useMemo(() => {
     return resources.filter((res) => {
@@ -55,7 +92,6 @@ export function ResourceManagement() {
       return matchesSearch && matchesCategory;
     });
   }, [resources, searchTerm, selectedCategory]);
-
   const columns: ColumnDef<Resource>[] = [
     {
       accessorKey: 'title',
@@ -148,14 +184,17 @@ export function ResourceManagement() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel className="text-xs">Actions</DropdownMenuLabel>
-              <DropdownMenuItem className="text-xs cursor-pointer">
-                View Inspection Log
+              <DropdownMenuItem
+                onClick={() => toggleAvailability(row.original.id, row.original.status !== 'available')}
+                className="text-xs cursor-pointer"
+              >
+                {row.original.status === 'available' ? 'Mark Unavailable' : 'Mark Available'}
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs cursor-pointer">
-                Edit Specifications
-              </DropdownMenuItem>
-              <DropdownMenuItem className="text-xs cursor-pointer text-destructive">
-                Mark Maintenance
+              <DropdownMenuItem
+                onClick={() => retireResource(row.original.id)}
+                className="text-xs cursor-pointer text-destructive"
+              >
+                Retire Asset
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -191,21 +230,37 @@ export function ResourceManagement() {
             <div className="space-y-3 py-2 text-xs">
               <div className="space-y-1">
                 <label className="font-semibold text-foreground">Asset Title</label>
-                <Input placeholder="e.g. Panasonic Lumix GH6 Filmmaker Kit" />
+                <Input
+                  placeholder="e.g. Panasonic Lumix GH6 Filmmaker Kit"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">Category</label>
-                  <Input placeholder="DSLR Cameras" />
+                  <Input
+                    placeholder="DSLR Cameras"
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">Tag ID</label>
-                  <Input placeholder="MED-CAM-019" />
+                  <Input
+                    placeholder="MED-CAM-019"
+                    value={newTagId}
+                    onChange={(e) => setNewTagId(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="font-semibold text-foreground">Location / Room</label>
-                <Input placeholder="Media Arts Center, Locker #4" />
+                <Input
+                  placeholder="Media Arts Center, Locker #4"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                />
               </div>
             </div>
 
@@ -219,10 +274,11 @@ export function ResourceManagement() {
               </Button>
               <Button
                 size="sm"
-                onClick={() => setAddDialogOpen(false)}
+                disabled={isCreating || !newTitle.trim()}
+                onClick={handleCreateAsset}
                 className="font-semibold"
               >
-                Save to Registry
+                {isCreating ? 'Saving...' : 'Save to Registry'}
               </Button>
             </DialogFooter>
           </DialogContent>

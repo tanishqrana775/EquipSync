@@ -12,15 +12,26 @@ export function ProtectedRoute({
   children,
   allowedRoles,
 }: ProtectedRouteProps) {
-  const { role, isAuthenticated } = useAuth();
+  const { role, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 bg-background">
+        <div className="surface p-8 max-w-sm w-full text-center rounded-2xl border border-border/80 shadow-lg space-y-4">
+          <div className="h-10 w-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin mx-auto" />
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">
+            Verifying campus security session...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  // If specific role required, can either redirect or allow flexible demo preview
   if (allowedRoles && !allowedRoles.includes(role)) {
-    // In Phase 1 demo mode, we redirect to the current role's natural home
     const target = role === 'institution' ? '/app/institution' : '/app/user';
     return <Navigate to={target} replace />;
   }

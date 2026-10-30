@@ -59,10 +59,11 @@ export class CampusShareError extends Error {
 // unwrap helper
 // ---------------------------------------------------------------------------
 
-/** Discriminated-union shape matching what supabase-js returns. */
-type SupabaseResult<T> =
-  | { data: T;    error: null }
-  | { data: null; error: { message: string; code?: string } };
+/** Shape covering all Supabase JS response variations (tables, RPC, auth). */
+interface SupabaseResponseLike<T> {
+  data?: unknown;
+  error: { message: string; code?: string } | null;
+}
 
 /**
  * Unwraps a Supabase response, throwing a `CampusShareError` on error.
@@ -71,12 +72,8 @@ type SupabaseResult<T> =
  *   MESSAGE = '<code>' or '<code>:<detail>'
  *
  * supabase-js surfaces this in `error.message`.
- *
- * Narrowing strategy: after `if (response.error !== null)` throws,
- * TypeScript narrows `response` to `{ data: T; error: null }`, so
- * `response.data` is `T` with no cast required.
  */
-export function unwrap<T>(response: SupabaseResult<T>): T {
+export function unwrap<T>(response: SupabaseResponseLike<T>): T {
   if (response.error !== null) {
     const raw        = response.error.message ?? '';
     const firstColon = raw.indexOf(':');
@@ -84,8 +81,7 @@ export function unwrap<T>(response: SupabaseResult<T>): T {
     const reason     = firstColon === -1 ? undefined : raw.slice(firstColon + 1).trim() || undefined;
     throw new CampusShareError(code, reason, raw);
   }
-  // response is narrowed to { data: T; error: null } — no cast needed.
-  return response.data;
+  return response.data as T;
 }
 
 export default supabase;

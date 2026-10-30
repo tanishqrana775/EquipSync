@@ -92,14 +92,14 @@ export async function signUpMember(args: SignUpMemberArgs): Promise<void> {
 // Sign in (email / password)
 // ---------------------------------------------------------------------------
 export async function signIn(email: string, password: string): Promise<Session> {
-  const { session } = unwrap(
+  const res = unwrap<{ session: Session | null; user: unknown }>(
     await supabase.auth.signInWithPassword({ email, password })
   );
-  if (!session) {
+  if (!res.session) {
     // Email unconfirmed or invalid credentials returned no session
     throw new Error('No session returned – check your email for a confirmation link.');
   }
-  return session;
+  return res.session;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,13 +133,15 @@ export async function getMyProfile(): Promise<Profile> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('not_authenticated');
 
-  return unwrap(
+  const profile = unwrap<Profile>(
     await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
   );
+  if (!profile) throw new Error('not_found');
+  return profile;
 }
 
 // ---------------------------------------------------------------------------

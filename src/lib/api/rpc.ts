@@ -81,7 +81,7 @@ export async function requestBooking(args: {
       p_start:           args.start,
       p_end:             args.end,
       p_purpose:         args.purpose,
-      p_supervisor_name: args.supervisorName ?? null,
+      p_supervisor_name: args.supervisorName ?? undefined,
     })
   ) as Booking;
 }
@@ -98,7 +98,7 @@ export async function decideBooking(args: {
     await supabase.rpc('decide_booking', {
       p_booking_id: args.bookingId,
       p_approve:    args.approve,
-      p_note:       args.note ?? null,
+      p_note:       args.note ?? undefined,
     })
   ) as Booking;
 }
@@ -223,10 +223,10 @@ export async function checkOutBooking(args: {
   return unwrap(
     await supabase.rpc('check_out_booking', {
       p_booking_id:       args.bookingId,
-      p_photos:           args.photos,
+      p_photos:           args.photos as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
       p_condition:        args.condition,
       p_notes:            args.notes,
-      p_accessory_checks: args.accessoryChecks ?? [],
+      p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
     })
   ) as Booking;
 }
@@ -244,10 +244,10 @@ export async function checkInBooking(args: {
   return unwrap(
     await supabase.rpc('check_in_booking', {
       p_booking_id:       args.bookingId,
-      p_photos:           args.photos,
+      p_photos:           args.photos as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
       p_condition:        args.condition,
       p_notes:            args.notes,
-      p_accessory_checks: args.accessoryChecks ?? [],
+      p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
     })
   ) as Booking;
 }
@@ -264,7 +264,7 @@ export async function inspectReturn(args: {
     await supabase.rpc('inspect_return', {
       p_booking_id: args.bookingId,
       p_accept:     args.accept,
-      p_notes:      args.notes ?? null,
+      p_notes:      args.notes ?? undefined,
     })
   ) as Booking;
 }
@@ -328,9 +328,62 @@ export async function institutionStats(institutionId: string): Promise<Instituti
     'unused_30d'      in raw &&
     'pending_approvals' in raw
   ) {
-    return raw as InstitutionStats;
+    const candidate = raw as Record<string, unknown>;
+    return {
+      total_resources:   Number(candidate.total_resources ?? 0),
+      in_use_now:        Number(candidate.in_use_now ?? 0),
+      unused_30d:        Number(candidate.unused_30d ?? 0),
+      pending_approvals: Number(candidate.pending_approvals ?? 0),
+    };
   }
   throw new Error('institution_stats: unexpected response shape');
+}
+
+// ---------------------------------------------------------------------------
+// Context & Institution RPCs
+// ---------------------------------------------------------------------------
+
+export interface UserContext {
+  profile: Database['public']['Tables']['profiles']['Row'];
+  institution_id: string | null;
+  institution_name: string | null;
+  institution: Database['public']['Tables']['institutions']['Row'] | null;
+  verified_qualification_ids: string[];
+}
+
+export async function getMyContext(): Promise<UserContext> {
+  const raw = unwrap(
+    await supabase.rpc('get_my_context')
+  );
+  if (raw !== null && typeof raw === 'object' && 'profile' in raw) {
+    const candidate = raw as Record<string, unknown>;
+    const profile = candidate.profile as Database['public']['Tables']['profiles']['Row'];
+    const institutionId = typeof candidate.institution_id === 'string' ? candidate.institution_id : null;
+    const institutionName = typeof candidate.institution_name === 'string' ? candidate.institution_name : null;
+    const institution = candidate.institution && typeof candidate.institution === 'object'
+      ? candidate.institution as Database['public']['Tables']['institutions']['Row']
+      : null;
+    const verifiedQualificationIds = Array.isArray(candidate.verified_qualification_ids)
+      ? candidate.verified_qualification_ids.filter((id): id is string => typeof id === 'string')
+      : [];
+
+    return {
+      profile,
+      institution_id: institutionId,
+      institution_name: institutionName,
+      institution,
+      verified_qualification_ids: verifiedQualificationIds,
+    };
+  }
+  throw new Error('get_my_context: invalid context structure returned');
+}
+
+export async function setMemberInstitution(
+  institutionId: string
+): Promise<Database['public']['Tables']['profiles']['Row']> {
+  return unwrap(
+    await supabase.rpc('set_member_institution', { p_institution_id: institutionId })
+  );
 }
 
 // ---------------------------------------------------------------------------

@@ -1554,3 +1554,6 @@ grant execute on function public.resolve_incident(uuid)                         
 grant execute on function public.get_custody_timeline(uuid)                                            to authenticated;
 grant execute on function public.institution_stats(uuid)                                               to authenticated;
 grant execute on function public.current_institution_id()                                              to authenticated;
+grant execute on function public.is_institution_admin(uuid)                                            to anon, authenticated;
+grant execute on function public.is_verified_member()                                                  to anon, authenticated;
+grant execute on function public.is_booking_participant(uuid)                                          to anon, authenticated;

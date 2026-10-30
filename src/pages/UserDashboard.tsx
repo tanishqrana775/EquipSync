@@ -1,13 +1,19 @@
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Clock,
+  Calendar,
+  CheckCircle2,
+  ShieldCheck,
   Compass,
   FileCheck2,
   QrCode,
-  Clock,
-  ShieldCheck,
-  CheckCircle2,
-  Calendar,
   Sparkles,
+  ArrowRight,
+  Share2,
+  ListOrdered,
+  X,
+  Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatCard } from '@/components/shared/StatCard';
@@ -15,19 +21,60 @@ import { GlassCard } from '@/components/shared/GlassCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { ResourceThumb } from '@/components/shared/ResourceThumb';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/providers/AuthProvider';
 import { useBookings } from '@/hooks/useBookings';
 import { useResources } from '@/hooks/useResources';
-import { mockUserStats } from '@/lib/mock/activity';
+import { toast } from 'sonner';
 
 export function UserDashboard() {
   const { user } = useAuth();
-  const { bookings } = useBookings();
+  const {
+    bookings,
+    activeUsage,
+    history,
+    waitlist,
+    releasedSlots,
+    releaseBooking,
+    claimReleasedSlot,
+    leaveWaitlist,
+  } = useBookings();
   const { resources } = useResources();
 
   // Find active borrowing
   const activeBooking = bookings.find((b) => b.status === 'active') || bookings[0];
   const suggestedResources = resources.filter((r) => r.status === 'available').slice(0, 3);
+
+  // Derived user statistics
+  const userStats = useMemo(() => {
+    const activeCount = activeUsage.length;
+    const upcomingCount = bookings.filter((b) => b.status === 'approved' || b.status === 'pending').length;
+    const completedCount = history.filter((b) => b.status === 'completed').length;
+    return {
+      activeBorrowings: activeCount,
+      upcomingReservations: upcomingCount,
+      completedHandovers: completedCount,
+      reputationScore: 99.4,
+    };
+  }, [activeUsage, bookings, history]);
+
+  const handleRelease = async (bookingId: string) => {
+    try {
+      await releaseBooking(bookingId);
+    } catch {
+      // Handled in hook
+    }
+  };
+
+  const handleClaim = async (slotId: string) => {
+    try {
+      await claimReleasedSlot(slotId);
+    } catch {
+      // Handled in hook
+    }
+  };
+
+  const approvedBookingsToRelease = bookings.filter((b) => b.status === 'approved');
 
   return (
     <div className="space-y-6">
@@ -42,37 +89,70 @@ export function UserDashboard() {
             <span>Discover Resources</span>
           </Button>
         </Link>
-        <Link to="/app/bookings/bk-2024-001">
-          <Button variant="outline" size="sm" className="gap-2 font-medium bg-card">
-            <FileCheck2 className="h-4 w-4 text-emerald-600" />
-            <span>Active Custody Pass</span>
-          </Button>
-        </Link>
+        {activeBooking && (
+          <Link to={`/app/bookings/${activeBooking.id}`}>
+            <Button variant="outline" size="sm" className="gap-2 font-medium bg-card">
+              <FileCheck2 className="h-4 w-4 text-emerald-600" />
+              <span>Active Custody Pass</span>
+            </Button>
+          </Link>
+        )}
       </PageHeader>
+
+      {/* Released Slots Announcement Banner */}
+      {releasedSlots.length > 0 && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 to-primary/15 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl">
+              <Zap className="h-5 w-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-foreground">
+                Released Time Slots Available!
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                A peer released an approved reservation. Verified campus members can claim it instantly.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {releasedSlots.slice(0, 2).map((slot) => (
+              <Button
+                key={slot.id}
+                size="sm"
+                onClick={() => handleClaim(slot.id)}
+                className="text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+              >
+                Claim {new Date(slot.start_at).toLocaleDateString()}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* User Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Active in Custody"
-          value={mockUserStats.activeBorrowings}
+          value={userStats.activeBorrowings}
           icon={Clock}
-          change="Due in 2 days"
+          change={activeBooking ? 'Pass currently active' : 'None active'}
           changeType="neutral"
           tone="success"
-          description="Sony FX3 Cinema Camera Kit"
+          description={activeBooking?.resourceTitle || 'Equipment custody'}
         />
         <StatCard
           title="Upcoming Reserved"
-          value={mockUserStats.upcomingReservations}
+          value={userStats.upcomingReservations}
           icon={Calendar}
-          change="Cleared by faculty"
+          change="Cleared or awaiting faculty"
           changeType="positive"
           tone="primary"
-          description="MacBook Pro & Seminar Hall"
+          description="Future academic reservations"
         />
         <StatCard
           title="Completed Handovers"
-          value={mockUserStats.completedHandovers}
+          value={userStats.completedHandovers}
           icon={CheckCircle2}
           change="Zero damages reported"
           changeType="positive"
@@ -81,7 +161,7 @@ export function UserDashboard() {
         />
         <StatCard
           title="Campus Trust Score"
-          value={`${mockUserStats.reputationScore}%`}
+          value={`${userStats.reputationScore}%`}
           icon={ShieldCheck}
           change="Top Tier Borrower"
           changeType="positive"
@@ -117,7 +197,7 @@ export function UserDashboard() {
                   <p className="text-xs font-medium text-foreground pt-1">
                     Return Deadline:{' '}
                     <span className="text-primary font-bold">
-                      November 3, 2024 at 18:00
+                      {new Date(activeBooking.endTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
                     </span>
                   </p>
                 </div>
@@ -145,8 +225,83 @@ export function UserDashboard() {
         </div>
       )}
 
+      {/* Release Approved Booking Option */}
+      {approvedBookingsToRelease.length > 0 && (
+        <div className="surface p-4 rounded-xl border border-border/80 space-y-3">
+          <div className="flex items-center gap-2">
+            <Share2 className="h-4 w-4 text-primary" />
+            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Release Approved Reservation to Campus
+            </h4>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Plans changed? Release your approved booking so waitlisted researchers can use the equipment slot.
+          </p>
+          <div className="space-y-2">
+            {approvedBookingsToRelease.map((b) => (
+              <div key={b.id} className="p-3 bg-muted/30 rounded-lg flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-foreground">{b.resourceTitle}</span>
+                  <span className="text-muted-foreground ml-2">
+                    ({new Date(b.startTime).toLocaleDateString()} - {new Date(b.endTime).toLocaleDateString()})
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRelease(b.id)}
+                  className="text-xs h-7 text-primary border-primary/30 hover:bg-primary/10"
+                >
+                  Release Slot
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Priority Waitlist Queue Section */}
+      {waitlist.length > 0 && (
+        <div className="surface p-5 rounded-2xl border border-border/80 space-y-3">
+          <div className="flex items-center gap-2">
+            <ListOrdered className="h-4 w-4 text-primary" />
+            <h4 className="text-sm font-bold text-foreground">
+              My Waitlist Positions
+            </h4>
+          </div>
+          <div className="space-y-2">
+            {waitlist.map((item) => (
+              <div key={item.id} className="p-3 bg-muted/30 rounded-xl flex items-center justify-between text-xs">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[10px] font-bold">
+                      Position #{item.position ?? 1}
+                    </Badge>
+                    <span className="font-semibold text-foreground">
+                      Desired: {new Date(item.desired_start).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">
+                    Status: <strong className="capitalize text-foreground">{item.status}</strong>
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => leaveWaitlist(item.id)}
+                  className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                >
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Leave
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Suggested Available Resources */}
-      <div className="space-y-4 pt-4">
+      <div className="space-y-4 pt-2">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-foreground">

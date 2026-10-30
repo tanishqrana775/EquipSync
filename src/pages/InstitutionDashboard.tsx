@@ -18,12 +18,13 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Button } from '@/components/ui/button';
 import { useResources } from '@/hooks/useResources';
 import { useBookings } from '@/hooks/useBookings';
-import { mockInstitutionStats } from '@/lib/mock/activity';
+import { useInstitutionStats } from '@/hooks/useInstitutionStats';
+import { Check, X, UserCheck } from 'lucide-react';
 
 export function InstitutionDashboard() {
   const { resources, loading: resourcesLoading } = useResources();
-  const { bookings, loading: bookingsLoading } = useBookings();
-
+  const { bookings, loading: bookingsLoading, decideBooking } = useBookings({ institutionWide: true });
+  const { stats, pendingMembers, verifyMember, underutilised, loading: statsLoading } = useInstitutionStats();
   return (
     <div className="space-y-6">
       <PageHeader
@@ -49,25 +50,25 @@ export function InstitutionDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Cataloged Assets"
-          value={mockInstitutionStats.totalResources}
+          value={stats.totalResources}
           icon={Boxes}
           change="+8 this quarter"
           changeType="positive"
           tone="primary"
-          description="Distributed across 4 faculty hubs"
+          description="Distributed across faculty hubs"
         />
         <StatCard
           title="Active Checkouts"
-          value={mockInstitutionStats.activeBookings}
+          value={stats.activeBookings}
           icon={Clock}
-          change="38% of total inventory"
+          change={`${stats.totalResources > 0 ? Math.round((stats.activeBookings / stats.totalResources) * 100) : 0}% of inventory`}
           changeType="neutral"
           tone="success"
           description="In verified student & staff custody"
         />
         <StatCard
           title="Fleet Utilisation"
-          value={`${mockInstitutionStats.utilisationRate}%`}
+          value={`${stats.utilisationRate}%`}
           icon={TrendingUp}
           change="+4.2% vs last term"
           changeType="positive"
@@ -76,7 +77,7 @@ export function InstitutionDashboard() {
         />
         <StatCard
           title="Pending Approvals"
-          value={mockInstitutionStats.pendingApprovals}
+          value={stats.pendingApprovals}
           icon={AlertTriangle}
           change="Requires faculty review"
           changeType="neutral"
@@ -130,6 +131,27 @@ export function InstitutionDashboard() {
 
                 <div className="flex items-center gap-3 justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-border/50">
                   <StatusBadge status={bk.status} />
+                  {bk.status === 'pending' && (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => decideBooking({ bookingId: bk.id, approve: false, note: 'Rejected by faculty' })}
+                        className="h-8 text-xs text-destructive hover:bg-destructive/10 px-2"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        <span>Reject</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => decideBooking({ bookingId: bk.id, approve: true, note: 'Approved by faculty' })}
+                        className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-2.5"
+                      >
+                        <Check className="h-3.5 w-3.5 mr-1" />
+                        <span>Approve</span>
+                      </Button>
+                    </div>
+                  )}
                   <Link to={`/app/bookings/${bk.id}`}>
                     <Button variant="outline" size="sm" className="h-8 text-xs gap-1 font-medium">
                       <FileCheck2 className="h-3.5 w-3.5 text-primary" />

@@ -61,16 +61,16 @@ export function AppSidebar() {
           icon: LayoutDashboard,
         },
         {
+          label: 'My Bookings',
+          to: '/app/bookings',
+          icon: FileCheck2,
+          badge: '2',
+        },
+        {
           label: 'Discover & Reserve',
           to: '/app/discover',
           icon: Compass,
           badge: 'New',
-        },
-        {
-          label: 'My Custody Passes',
-          to: '/app/bookings/bk-2024-001',
-          icon: FileCheck2,
-          badge: '1 Due',
         },
       ];
 

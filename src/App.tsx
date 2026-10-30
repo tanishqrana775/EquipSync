@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Landing } from '@/pages/Landing';
 import { SignIn } from '@/pages/SignIn';
 import { Register } from '@/pages/Register';
+import { MyBookings } from '@/pages/MyBookings';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
 import { UserDashboard } from '@/pages/UserDashboard';
 import { ResourceManagement } from '@/pages/ResourceManagement';
@@ -44,6 +45,7 @@ export function App() {
           <Route path="institution" element={<InstitutionDashboard />} />
           <Route path="institution/resources" element={<ResourceManagement />} />
           <Route path="user" element={<UserDashboard />} />
+          <Route path="bookings" element={<MyBookings />} />
           <Route path="discover" element={<Discover />} />
           <Route path="bookings/:id" element={<BookingCustody />} />
         </Route>

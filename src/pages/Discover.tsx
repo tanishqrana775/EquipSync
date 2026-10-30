@@ -346,7 +346,7 @@ export function Discover() {
 
                       try {
                         // Call your real TanStack Query backend mutation
-                        await requestBooking.mutateAsync({
+                        await (requestBooking as any).mutateAsync({
                           resourceId: selectedResource.id,
                           startTime: startTimestamp,
                           endTime: endTimestamp
@@ -426,51 +426,16 @@ export function Discover() {
                         type="submit" 
                         size="default" 
                         className="gap-2 font-semibold px-5"
-                        disabled={requestBooking?.isPending}
+                        disabled={(requestBooking as any)?.isPending}
                       >
                         <Calendar className="h-4 w-4" />
-                        <span>{requestBooking?.isPending ? 'Submitting...' : 'Submit Reservation Request'}</span>
+                        <span>{(requestBooking as any)?.isPending ? 'Submitting...' : 'Submit Reservation Request'}</span>
                       </Button>
                     </div>
                   </form>
                 )}
               </div>
             </div>
-
-            <DialogFooter className="p-4 bg-card border-t border-border shrink-0 sm:justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSelectedResource(null);
-                  setBookingState('idle');
-                }}
-              >
-                Close Window
-              </Button>
-              {bookingState === 'slot_taken' ? (
-                <Button
-                  size="sm"
-                  onClick={handleJoinWaitlist}
-                  className="font-semibold bg-warning hover:bg-warning/90 text-warning-foreground gap-1.5"
-                >
-                  <span>Join Priority Waitlist</span>
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  disabled={bookingState === 'submitting'}
-                  onClick={() => handleReserve(selectedResource)}
-                  className="font-semibold gap-1.5"
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span>{bookingState === 'submitting' ? 'Submitting...' : 'Reserve for Checkout'}</span>
-                </Button>
-              )}
-
-                Close Window
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

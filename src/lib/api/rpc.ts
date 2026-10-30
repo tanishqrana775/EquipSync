@@ -1,0 +1,440 @@
+/**
+ * src/lib/api/rpc.ts
+ * CampusShare – Typed wrappers for every Supabase RPC + realtime subscriptions.
+ *
+ * Every function calls `unwrap()` so callers get a `CampusShareError` with a
+ * machine-readable `.code` on failure. No raw Supabase errors escape this layer.
+ */
+
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { supabase, unwrap } from '../supabase';
+import type { Database } from '../database.types';
+
+// ---------------------------------------------------------------------------
+// Convenience row types
+// ---------------------------------------------------------------------------
+export type Booking         = Database['public']['Tables']['bookings']['Row'];
+export type WaitlistEntry   = Database['public']['Tables']['waitlist_entries']['Row'];
+export type Incident        = Database['public']['Tables']['incidents']['Row'];
+export type Notification    = Database['public']['Tables']['notifications']['Row'];
+export type ReleasedSlot    = Database['public']['Tables']['released_slots']['Row'];
+
+export type ConditionRating = Database['public']['Enums']['condition_rating'];
+export type IncidentSeverity = Database['public']['Enums']['incident_severity'];
+
+// Photo input passed to check-out / check-in RPCs
+export interface PhotoInput {
+  slot:               string;
+  storage_path:       string;
+  sha256:             string;
+  client_captured_at: string; // ISO-8601 timestamptz string
+}
+
+// Accessory check item
+export interface AccessoryCheckInput {
+  accessory_id: string;
+  name:         string;
+  state:        'present' | 'missing' | 'damaged';
+  note?:        string;
+}
+
+// ---------------------------------------------------------------------------
+// Waitlist entry with position (returned by my_waitlist RPC)
+// ---------------------------------------------------------------------------
+export interface WaitlistEntryWithPosition extends Omit<WaitlistEntry, never> {
+  position: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Institution stats (returned by institution_stats RPC)
+// ---------------------------------------------------------------------------
+export interface InstitutionStats {
+  total_resources:   number;
+  in_use_now:        number;
+  unused_30d:        number;
+  pending_approvals: number;
+}
+
+// ---------------------------------------------------------------------------
+// Custody timeline item (arbitrary JSON from get_custody_timeline RPC)
+// ---------------------------------------------------------------------------
+export interface CustodyTimelineItem {
+  type:         'status_change' | 'custody_event' | 'custody_photo' | 'incident';
+  occurred_at:  string;
+  actor_id?:    string;
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// request_booking
+// ---------------------------------------------------------------------------
+export async function requestBooking(args: {
+  resourceId:     string;
+  start:          string;
+  end:            string;
+  purpose:        string;
+  supervisorName?: string;
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('request_booking', {
+      p_resource_id:     args.resourceId,
+      p_start:           args.start,
+      p_end:             args.end,
+      p_purpose:         args.purpose,
+      p_supervisor_name: args.supervisorName ?? null,
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// decide_booking  (admin)
+// ---------------------------------------------------------------------------
+export async function decideBooking(args: {
+  bookingId: string;
+  approve:   boolean;
+  note?:     string;
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('decide_booking', {
+      p_booking_id: args.bookingId,
+      p_approve:    args.approve,
+      p_note:       args.note ?? null,
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// cancel_booking  (owner)
+// ---------------------------------------------------------------------------
+export async function cancelBooking(bookingId: string): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('cancel_booking', { p_booking_id: bookingId })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// release_booking  (owner, approved only)
+// ---------------------------------------------------------------------------
+export async function releaseBooking(bookingId: string): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('release_booking', { p_booking_id: bookingId })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// claim_released_slot  (verified member)
+// ---------------------------------------------------------------------------
+export async function claimReleasedSlot(slotId: string): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('claim_released_slot', { p_slot_id: slotId })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// join_waitlist
+// ---------------------------------------------------------------------------
+export async function joinWaitlist(args: {
+  resourceId: string;
+  start:      string;
+  end:        string;
+}): Promise<WaitlistEntry> {
+  return unwrap(
+    await supabase.rpc('join_waitlist', {
+      p_resource_id: args.resourceId,
+      p_start:       args.start,
+      p_end:         args.end,
+    })
+  ) as WaitlistEntry;
+}
+
+// ---------------------------------------------------------------------------
+// leave_waitlist
+// ---------------------------------------------------------------------------
+export async function leaveWaitlist(entryId: string): Promise<void> {
+  unwrap(
+    await supabase.rpc('leave_waitlist', { p_entry_id: entryId })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// my_waitlist  (returns entries + FIFO position)
+// ---------------------------------------------------------------------------
+export async function myWaitlist(): Promise<WaitlistEntryWithPosition[]> {
+  const rows = unwrap(
+    await supabase.rpc('my_waitlist')
+  );
+  // RPC returns rows; each row shape is validated at the DB boundary.
+  // We map to our typed interface using field presence narrowing.
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    if (
+      row !== null &&
+      typeof row === 'object' &&
+      'id' in row
+    ) {
+      return row as WaitlistEntryWithPosition;
+    }
+    throw new Error('my_waitlist: unexpected row shape');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// verify_member  (admin)
+// ---------------------------------------------------------------------------
+export async function verifyMember(args: {
+  userId:  string;
+  approve: boolean;
+}): Promise<Database['public']['Tables']['profiles']['Row']> {
+  return unwrap(
+    await supabase.rpc('verify_member', {
+      p_user_id: args.userId,
+      p_approve: args.approve,
+    })
+  ) as Database['public']['Tables']['profiles']['Row'];
+}
+
+// ---------------------------------------------------------------------------
+// verify_qualification  (admin)
+// ---------------------------------------------------------------------------
+export async function verifyQualification(args: {
+  userId:          string;
+  qualificationId: string;
+  approve:         boolean;
+}): Promise<Database['public']['Tables']['user_qualifications']['Row']> {
+  return unwrap(
+    await supabase.rpc('verify_qualification', {
+      p_user_id:          args.userId,
+      p_qualification_id: args.qualificationId,
+      p_approve:          args.approve,
+    })
+  ) as Database['public']['Tables']['user_qualifications']['Row'];
+}
+
+// ---------------------------------------------------------------------------
+// check_out_booking  (owner)
+// ---------------------------------------------------------------------------
+export async function checkOutBooking(args: {
+  bookingId:       string;
+  photos:          PhotoInput[];
+  condition:       ConditionRating;
+  notes:           string;
+  accessoryChecks?: AccessoryCheckInput[];
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('check_out_booking', {
+      p_booking_id:       args.bookingId,
+      p_photos:           args.photos,
+      p_condition:        args.condition,
+      p_notes:            args.notes,
+      p_accessory_checks: args.accessoryChecks ?? [],
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// check_in_booking  (owner)
+// ---------------------------------------------------------------------------
+export async function checkInBooking(args: {
+  bookingId:       string;
+  photos:          PhotoInput[];
+  condition:       ConditionRating;
+  notes:           string;
+  accessoryChecks?: AccessoryCheckInput[];
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('check_in_booking', {
+      p_booking_id:       args.bookingId,
+      p_photos:           args.photos,
+      p_condition:        args.condition,
+      p_notes:            args.notes,
+      p_accessory_checks: args.accessoryChecks ?? [],
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// inspect_return  (admin)
+// ---------------------------------------------------------------------------
+export async function inspectReturn(args: {
+  bookingId: string;
+  accept:    boolean;
+  notes?:    string;
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('inspect_return', {
+      p_booking_id: args.bookingId,
+      p_accept:     args.accept,
+      p_notes:      args.notes ?? null,
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// report_incident  (participant)
+// ---------------------------------------------------------------------------
+export async function reportIncident(args: {
+  bookingId:   string;
+  severity:    IncidentSeverity;
+  type:        'damage' | 'missing_accessory' | 'other';
+  description: string;
+}): Promise<Incident> {
+  return unwrap(
+    await supabase.rpc('report_incident', {
+      p_booking_id: args.bookingId,
+      p_severity:   args.severity,
+      p_type:       args.type,
+      p_description: args.description,
+    })
+  ) as Incident;
+}
+
+// ---------------------------------------------------------------------------
+// resolve_incident  (admin)
+// ---------------------------------------------------------------------------
+export async function resolveIncident(incidentId: string): Promise<Incident> {
+  return unwrap(
+    await supabase.rpc('resolve_incident', { p_incident_id: incidentId })
+  ) as Incident;
+}
+
+// ---------------------------------------------------------------------------
+// get_custody_timeline  (participant or admin)
+// ---------------------------------------------------------------------------
+export async function getCustodyTimeline(bookingId: string): Promise<CustodyTimelineItem[]> {
+  const raw = unwrap(
+    await supabase.rpc('get_custody_timeline', { p_booking_id: bookingId })
+  );
+  if (!Array.isArray(raw)) return [];
+  return raw.map((item) => {
+    if (item !== null && typeof item === 'object' && 'type' in item) {
+      return item as CustodyTimelineItem;
+    }
+    throw new Error('get_custody_timeline: unexpected item shape');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// institution_stats  (admin)
+// ---------------------------------------------------------------------------
+export async function institutionStats(institutionId: string): Promise<InstitutionStats> {
+  const raw = unwrap(
+    await supabase.rpc('institution_stats', { p_institution_id: institutionId })
+  );
+  if (
+    raw !== null &&
+    typeof raw === 'object' &&
+    'total_resources' in raw &&
+    'in_use_now'      in raw &&
+    'unused_30d'      in raw &&
+    'pending_approvals' in raw
+  ) {
+    return raw as InstitutionStats;
+  }
+  throw new Error('institution_stats: unexpected response shape');
+}
+
+// ---------------------------------------------------------------------------
+// Realtime: notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Subscribes to INSERT events on the `notifications` table for `userId`.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToNotifications(
+  userId:  string,
+  cb:      (notification: Notification) => void,
+): () => void {
+  const channel: RealtimeChannel = supabase
+    .channel(`notifications:${userId}`)
+    .on<Notification>(
+      'postgres_changes',
+      {
+        event:  'INSERT',
+        schema: 'public',
+        table:  'notifications',
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => cb(payload.new),
+    )
+    .subscribe();
+
+  return () => { void supabase.removeChannel(channel); };
+}
+
+// ---------------------------------------------------------------------------
+// Realtime: bookings
+// ---------------------------------------------------------------------------
+
+/** Filter options for booking subscriptions. */
+export type BookingRealtimeFilter =
+  | { kind: 'user';        userId:        string }
+  | { kind: 'institution'; institutionId: string };
+
+/**
+ * Subscribes to INSERT and UPDATE events on `bookings`.
+ * Pass `kind: 'user'` for a borrower view, `kind: 'institution'` for an admin view.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToBookings(
+  filter: BookingRealtimeFilter,
+  cb:     (booking: Booking) => void,
+): () => void {
+  const channelName =
+    filter.kind === 'user'
+      ? `bookings:user:${filter.userId}`
+      : `bookings:inst:${filter.institutionId}`;
+
+  const pgFilter =
+    filter.kind === 'user'
+      ? `user_id=eq.${filter.userId}`
+      : `institution_id=eq.${filter.institutionId}`;
+
+  const channel: RealtimeChannel = supabase
+    .channel(channelName)
+    .on<Booking>(
+      'postgres_changes',
+      {
+        event:  '*',
+        schema: 'public',
+        table:  'bookings',
+        filter: pgFilter,
+      },
+      (payload) => {
+        if (payload.eventType === 'DELETE') return;
+        cb(payload.new);
+      },
+    )
+    .subscribe();
+
+  return () => { void supabase.removeChannel(channel); };
+}
+
+// ---------------------------------------------------------------------------
+// Realtime: released_slots  (open slots feed for a member's institution)
+// ---------------------------------------------------------------------------
+
+/**
+ * Subscribes to new open released slots for an institution.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToReleasedSlots(
+  institutionId: string,
+  cb:            (slot: ReleasedSlot) => void,
+): () => void {
+  const channel: RealtimeChannel = supabase
+    .channel(`released_slots:${institutionId}`)
+    .on<ReleasedSlot>(
+      'postgres_changes',
+      {
+        event:  'INSERT',
+        schema: 'public',
+        table:  'released_slots',
+        filter: `institution_id=eq.${institutionId}`,
+      },
+      (payload) => cb(payload.new),
+    )
+    .subscribe();
+
+  return () => { void supabase.removeChannel(channel); };
+}

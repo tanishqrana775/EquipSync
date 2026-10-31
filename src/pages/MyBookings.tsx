@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useBookings } from '@/hooks/useBookings';
+import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -30,7 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export function MyBookings() {
-  const { bookings } = useBookings();
+  const { bookings, cancelBooking, loading } = useBookings();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
 
@@ -50,10 +51,13 @@ export function MyBookings() {
     completed: bookings.filter(b => b.status === 'completed').length,
   }), [bookings]);
 
-  const handleCancel = (id: string) => {
-    toast.success('Booking cancelled successfully');
+  const handleCancel = async (id: string) => {
+    try {
+      await cancelBooking(id);
+    } catch {
+      // Handled in hook
+    }
   };
-
   return (
     <div className="space-y-6">
       <PageHeader

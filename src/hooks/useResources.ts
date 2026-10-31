@@ -1,14 +1,13 @@
 /**
  * src/hooks/useResources.ts
- * CampusShare – TanStack Query hook for resources and catalog management.
+ * EquipSync – TanStack Query hook for resources and catalog management.
  */
 
 import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase, unwrap } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../providers/AuthProvider';
-import { Resource, ResourceCategory } from '../lib/types';
-import { mockResources } from '../lib/mock/resources';
+import { Resource } from '../lib/types';
 import { mapDbResourceToUi } from '../lib/api/mappers';
 import { toastError } from '../lib/errors';
 import { toast } from 'sonner';
@@ -22,22 +21,21 @@ export interface ResourceFilters {
   eligibleOnly?: boolean;
 }
 
-const isMock = import.meta.env.VITE_USE_MOCKS === 'true';
-
 export function useResources(filters?: ResourceFilters) {
   const queryClient = useQueryClient();
   const { profile, verifiedQualificationIds, user } = useAuth();
+  const institutionId = profile?.institution_id;
 
-  // Fetch full resource catalog
+  // Fetch full resource catalog scoped strictly to caller's institution
   const {
     data: rawResources = [],
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ['resources'],
+    queryKey: ['resources', institutionId, user?.id],
     queryFn: async () => {
-      if (isMock) {
+      if (!institutionId) {
         return [];
       }
       const { data, error } = await supabase
@@ -52,17 +50,17 @@ export function useResources(filters?: ResourceFilters) {
             qualifications(name)
           )
         `)
+        .eq('institution_id', institutionId)
         .order('name');
 
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock,
+    enabled: !!institutionId,
   });
 
   // Map to UI types
   const allResources: Resource[] = useMemo(() => {
-    if (isMock) return mockResources;
     return rawResources.map((r) => mapDbResourceToUi(r as never));
   }, [rawResources]);
 
@@ -84,7 +82,6 @@ export function useResources(filters?: ResourceFilters) {
         return false;
       }
       if (filters?.eligibleOnly && profile) {
-        // Find raw resource
         const raw = rawResources.find((rawR) => rawR.id === r.id);
         if (raw?.eligibility_rules) {
           const rules = raw.eligibility_rules;
@@ -120,7 +117,6 @@ export function useResources(filters?: ResourceFilters) {
   // Toggle availability (optimistic)
   const toggleAvailabilityMutation = useMutation({
     mutationFn: async ({ id, isAvailable }: { id: string; isAvailable: boolean }) => {
-      if (isMock) return;
       const { error } = await supabase
         .from('resources')
         .update({ is_available: isAvailable })
@@ -128,21 +124,21 @@ export function useResources(filters?: ResourceFilters) {
       if (error) throw error;
     },
     onMutate: async ({ id, isAvailable }) => {
-      await queryClient.cancelQueries({ queryKey: ['resources'] });
-      const previous = queryClient.getQueryData(['resources']);
-      queryClient.setQueryData(['resources'], (old: typeof rawResources = []) =>
+      await queryClient.cancelQueries({ queryKey: ['resources', institutionId, user?.id] });
+      const previous = queryClient.getQueryData(['resources', institutionId, user?.id]);
+      queryClient.setQueryData(['resources', institutionId, user?.id], (old: typeof rawResources = []) =>
         old.map((r) => (r.id === id ? { ...r, is_available: isAvailable } : r))
       );
       return { previous };
     },
     onError: (err, _vars, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['resources'], context.previous);
+        queryClient.setQueryData(['resources', institutionId, user?.id], context.previous);
       }
       toastError(err, 'Failed to update resource availability');
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ['resources'] });
+      void queryClient.invalidateQueries({ queryKey: ['resources', institutionId, user?.id] });
       toast.success('Resource status updated');
     },
   });
@@ -158,23 +154,31 @@ export function useResources(filters?: ResourceFilters) {
       asset_tag?: string;
       required_photo_slots?: string[];
       institutionId?: string;
+      image_path?: string;
+      id?: string;
     }) => {
-      if (isMock) return;
-      const instId = input.institutionId || profile?.institution_id;
-      if (!instId) throw new Error('No institution associated with this administrator');
+      const targetInstId = input.institutionId || institutionId;
+      if (!targetInstId) throw new Error('No organisation associated with this user');
+
+      const payload: Database['public']['Tables']['resources']['Insert'] = {
+        institution_id: targetInstId,
+        name: input.name,
+        kind: input.kind,
+        category: input.category || null,
+        description: input.description || null,
+        location: input.location || null,
+        asset_tag: input.asset_tag || null,
+        required_photo_slots: input.required_photo_slots || ['front', 'back', 'left', 'right'],
+        image_path: input.image_path || null,
+      };
+
+      if (input.id) {
+        payload.id = input.id;
+      }
 
       const { data, error } = await supabase
         .from('resources')
-        .insert({
-          institution_id: instId,
-          name: input.name,
-          kind: input.kind,
-          category: input.category || null,
-          description: input.description || null,
-          location: input.location || null,
-          asset_tag: input.asset_tag || null,
-          required_photo_slots: input.required_photo_slots || ['front', 'back', 'left', 'right'],
-        })
+        .insert(payload)
         .select()
         .single();
 
@@ -196,7 +200,6 @@ export function useResources(filters?: ResourceFilters) {
       id,
       ...updates
     }: Partial<Database['public']['Tables']['resources']['Update']> & { id: string }) => {
-      if (isMock) return;
       const { data, error } = await supabase
         .from('resources')
         .update(updates)
@@ -218,7 +221,6 @@ export function useResources(filters?: ResourceFilters) {
   // Retire resource
   const retireResourceMutation = useMutation({
     mutationFn: async (id: string) => {
-      if (isMock) return;
       const { error } = await supabase
         .from('resources')
         .update({ status: 'retired', is_available: false })
@@ -240,7 +242,6 @@ export function useResources(filters?: ResourceFilters) {
       resourceId,
       ...rules
     }: Partial<Database['public']['Tables']['eligibility_rules']['Insert']> & { resourceId: string }) => {
-      if (isMock) return;
       const { error } = await supabase.from('eligibility_rules').upsert({
         resource_id: resourceId,
         ...rules,
@@ -265,8 +266,6 @@ export function useResources(filters?: ResourceFilters) {
       resourceId: string;
       accessories: Array<{ name: string; required: boolean }>;
     }) => {
-      if (isMock) return;
-      // Delete existing and insert new
       await supabase.from('resource_accessories').delete().eq('resource_id', resourceId);
       if (accessories.length > 0) {
         const { error } = await supabase.from('resource_accessories').insert(
@@ -297,7 +296,6 @@ export function useResources(filters?: ResourceFilters) {
       resourceId: string;
       windows: Array<{ weekday: number; start_time: string; end_time: string }>;
     }) => {
-      if (isMock) return;
       await supabase.from('resource_availability_windows').delete().eq('resource_id', resourceId);
       if (windows.length > 0) {
         const { error } = await supabase.from('resource_availability_windows').insert(
@@ -323,10 +321,9 @@ export function useResources(filters?: ResourceFilters) {
   // Upload resource image: '<institution_id>/<resource_id>/<filename>'
   const uploadResourceImage = useCallback(
     async (resourceId: string, file: File): Promise<string> => {
-      const instId = profile?.institution_id;
-      if (!instId) throw new Error('No institution ID found');
+      if (!institutionId) throw new Error('No organisation ID found');
       const ext = file.name.split('.').pop() || 'jpg';
-      const path = `${instId}/${resourceId}/${Date.now()}.${ext}`;
+      const path = `${institutionId}/${resourceId}/${Date.now()}.${ext}`;
 
       const { error } = await supabase.storage.from('resource-images').upload(path, file, {
         upsert: true,
@@ -336,16 +333,15 @@ export function useResources(filters?: ResourceFilters) {
       await updateResourceMutation.mutateAsync({ id: resourceId, image_path: path });
       return path;
     },
-    [profile, updateResourceMutation]
+    [institutionId, updateResourceMutation]
   );
 
   // Upload evidence: '<institution_id>/<resource_id>/<filename>'
   const uploadEvidence = useCallback(
     async (resourceId: string, file: File, note?: string): Promise<string> => {
-      const instId = profile?.institution_id;
-      if (!instId) throw new Error('No institution ID found');
+      if (!institutionId) throw new Error('No organisation ID found');
       const ext = file.name.split('.').pop() || 'pdf';
-      const path = `${instId}/${resourceId}/evidence_${Date.now()}.${ext}`;
+      const path = `${institutionId}/${resourceId}/evidence_${Date.now()}.${ext}`;
 
       const { error } = await supabase.storage.from('resource-evidence').upload(path, file, {
         upsert: false,
@@ -362,12 +358,13 @@ export function useResources(filters?: ResourceFilters) {
       toast.success('Compliance evidence uploaded');
       return path;
     },
-    [profile, user]
+    [institutionId, user.id]
   );
 
   return {
     resources,
-    loading,
+    loading: institutionId ? loading : false,
+    hasInstitution: !!institutionId,
     error: queryError instanceof Error ? queryError.message : null,
     refetch,
     getResourceById,

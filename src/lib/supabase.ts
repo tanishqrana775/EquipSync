@@ -15,8 +15,8 @@ import type { Database } from './database.types';
 const _url  = import.meta.env.VITE_SUPABASE_URL  as string | undefined;
 const _key  = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-if (!_url)  throw new Error('[CampusShare] Missing env var: VITE_SUPABASE_URL');
-if (!_key)  throw new Error('[CampusShare] Missing env var: VITE_SUPABASE_ANON_KEY');
+if (!_url)  throw new Error('[EquipSync] Missing env var: VITE_SUPABASE_URL');
+if (!_key)  throw new Error('[EquipSync] Missing env var: VITE_SUPABASE_ANON_KEY');
 
 const supabaseUrl     = _url;
 const supabaseAnonKey = _key;
@@ -55,6 +55,8 @@ export class CampusShareError extends Error {
   }
 }
 
+export const EquipSyncError = CampusShareError;
+export type EquipSyncError = CampusShareError;
 // ---------------------------------------------------------------------------
 // unwrap helper
 // ---------------------------------------------------------------------------

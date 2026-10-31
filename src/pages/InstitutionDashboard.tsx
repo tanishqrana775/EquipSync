@@ -29,8 +29,8 @@ export function InstitutionDashboard() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Administrative Overview"
-        title="Institution Management"
-        description="Monitor campus asset circulation, verify custody passes, and evaluate department equipment utilisation."
+        title="Organisation Management"
+        description="Monitor asset circulation, verify custody passes, and evaluate equipment utilisation."
       >
         <Link to="/app/institution/resources">
           <Button size="sm" className="gap-2 font-semibold shadow-sm">
@@ -41,11 +41,10 @@ export function InstitutionDashboard() {
         <Link to="/app/discover">
           <Button variant="outline" size="sm" className="gap-2 font-medium bg-card">
             <Compass className="h-4 w-4 text-emerald-600" />
-            <span>Campus Catalog</span>
+            <span>Equipment Catalog</span>
           </Button>
         </Link>
       </PageHeader>
-
       {/* Primary KPI Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -64,7 +63,7 @@ export function InstitutionDashboard() {
           change={`${stats.totalResources > 0 ? Math.round((stats.activeBookings / stats.totalResources) * 100) : 0}% of inventory`}
           changeType="neutral"
           tone="success"
-          description="In verified student & staff custody"
+          description="In verified member custody"
         />
         <StatCard
           title="Fleet Utilisation"
@@ -93,10 +92,10 @@ export function InstitutionDashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-foreground">
-                Recent Campus Bookings
+                Recent Bookings
               </h3>
               <p className="text-xs text-muted-foreground">
-                Live bookings scheduled across academic facilities
+                Live bookings scheduled across facilities
               </p>
             </div>
             <Link to="/app/institution/resources">

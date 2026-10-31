@@ -1095,6 +1095,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      get_public_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       set_member_institution: {
         Args: { p_institution_id: string }
         Returns: Database["public"]["Tables"]["profiles"]["Row"]

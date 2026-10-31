@@ -56,7 +56,7 @@ export function AppSidebar() {
       ]
     : [
         {
-          label: 'Student Dashboard',
+          label: 'Member Dashboard',
           to: '/app/user',
           icon: LayoutDashboard,
         },
@@ -88,10 +88,10 @@ export function AppSidebar() {
           </div>
           <div className="flex flex-col">
             <span className="text-base font-extrabold tracking-tight leading-none bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-              CampusShare
+              EquipSync
             </span>
             <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mt-0.5">
-              Resource Exchange
+              Equipment Sharing
             </span>
           </div>
         </Link>
@@ -118,7 +118,7 @@ export function AppSidebar() {
             variant="outline"
             className="text-[9px] py-0 px-1 border-current opacity-80"
           >
-            Phase 1
+            Live
           </Badge>
         </div>
       </div>

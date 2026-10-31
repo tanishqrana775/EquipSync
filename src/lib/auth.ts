@@ -35,20 +35,21 @@ export interface SignUpInstitutionArgs {
  * The `handle_new_user` trigger reads `raw_user_meta_data` and creates
  * the institution + a verified institution_admin profile automatically.
  */
-export async function signUpInstitution(args: SignUpInstitutionArgs): Promise<void> {
-  unwrap(
+export async function signUpInstitution(args: SignUpInstitutionArgs) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const emailRedirectTo = `${origin}/login?verified=1`;
+  return unwrap(
     await supabase.auth.signUp({
       email:    args.email,
       password: args.password,
       options: {
+        emailRedirectTo,
         data: {
           role:             'institution_admin',
           full_name:         args.fullName,
           institution_name:  args.institutionName,
           institution_type:  args.institutionType,
           email_domain:      args.emailDomain ?? null,
-          // address is stored on the institution row; pass it so the
-          // trigger can set it if desired (trigger reads it opportunistically)
           address:           args.address ?? null,
         },
       },
@@ -71,12 +72,15 @@ export interface SignUpMemberArgs {
  * Registers a new member. The `handle_new_user` trigger creates a
  * 'pending' profile linked to the existing institution.
  */
-export async function signUpMember(args: SignUpMemberArgs): Promise<void> {
-  unwrap(
+export async function signUpMember(args: SignUpMemberArgs) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const emailRedirectTo = `${origin}/login?verified=1`;
+  return unwrap(
     await supabase.auth.signUp({
       email:    args.email,
       password: args.password,
       options: {
+        emailRedirectTo,
         data: {
           role:           'member',
           full_name:       args.fullName,
@@ -121,6 +125,37 @@ export async function signOut(): Promise<void> {
   unwrap(await supabase.auth.signOut());
 }
 
+
+// ---------------------------------------------------------------------------
+// Email verification & Password recovery
+// ---------------------------------------------------------------------------
+
+export async function resendVerification(email: string): Promise<void> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const emailRedirectTo = `${origin}/login?verified=1`;
+  unwrap(
+    await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: { emailRedirectTo },
+    })
+  );
+}
+
+export async function sendPasswordReset(email: string): Promise<void> {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  unwrap(
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/update-password`,
+    })
+  );
+}
+
+export async function updatePassword(password: string): Promise<void> {
+  unwrap(
+    await supabase.auth.updateUser({ password })
+  );
+}
 // ---------------------------------------------------------------------------
 // Current user profile
 // ---------------------------------------------------------------------------

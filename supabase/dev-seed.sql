@@ -1,6 +1,7 @@
 -- =============================================================================
--- seed.sql  –  CampusShare demo data (idempotent)
--- Run after all three migrations.
+-- DEV/STAGING ONLY
+-- dev-seed.sql  –  EquipSync demo data (idempotent)
+-- Run after all migrations.
 -- Does NOT insert profiles or bookings (those require auth users).
 -- =============================================================================
 

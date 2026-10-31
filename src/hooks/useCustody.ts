@@ -1,20 +1,19 @@
 /**
  * src/hooks/useCustody.ts
- * CampusShare – TanStack Query hook for custody tracking, inspections & verification.
+ * EquipSync – TanStack Query hook for custody tracking, inspections & verification.
  */
 
 import { useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../providers/AuthProvider';
 import { CustodyRecord } from '../lib/types';
-import { mockCustodyRecords } from '../lib/mock/custody';
 import { buildCustodyRecordFromBooking } from '../lib/api/mappers';
 import {
   getCustodyTimeline,
   inspectReturn as rpcInspectReturn,
   reportIncident as rpcReportIncident,
   CustodyTimelineItem,
-  Booking,
   IncidentSeverity,
 } from '../lib/api/rpc';
 import {
@@ -28,10 +27,11 @@ import { toastError } from '../lib/errors';
 import { toast } from 'sonner';
 import type { Database } from '../lib/database.types';
 
-const isMock = import.meta.env.VITE_USE_MOCKS === 'true';
-
 export function useCustody(bookingId?: string) {
   const queryClient = useQueryClient();
+  const { profile, user } = useAuth();
+  const institutionId = profile?.institution_id;
+  const userId = user?.id;
 
   // Load booking with resource and borrower
   const {
@@ -40,9 +40,9 @@ export function useCustody(bookingId?: string) {
     error: bookingError,
     refetch: refetchBooking,
   } = useQuery({
-    queryKey: ['custody_booking', bookingId],
+    queryKey: ['custody_booking', bookingId, institutionId, userId],
     queryFn: async () => {
-      if (isMock || !bookingId) return null;
+      if (!bookingId) return null;
       const { data, error } = await supabase
         .from('bookings')
         .select(`
@@ -59,14 +59,14 @@ export function useCustody(bookingId?: string) {
       if (error) throw error;
       return data;
     },
-    enabled: !isMock && !!bookingId,
+    enabled: !!bookingId,
   });
 
   // Load custody events
   const { data: events = [] } = useQuery({
-    queryKey: ['custody_events', bookingId],
+    queryKey: ['custody_events', bookingId, institutionId],
     queryFn: async () => {
-      if (isMock || !bookingId) return [];
+      if (!bookingId) return [];
       const { data, error } = await supabase
         .from('custody_events')
         .select('*')
@@ -75,14 +75,14 @@ export function useCustody(bookingId?: string) {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!bookingId,
+    enabled: !!bookingId,
   });
 
   // Load custody photos
   const { data: photos = [] } = useQuery({
-    queryKey: ['custody_photos', bookingId],
+    queryKey: ['custody_photos', bookingId, institutionId],
     queryFn: async () => {
-      if (isMock || !bookingId) return [];
+      if (!bookingId) return [];
       const { data, error } = await supabase
         .from('custody_photos')
         .select('*')
@@ -91,12 +91,12 @@ export function useCustody(bookingId?: string) {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!bookingId,
+    enabled: !!bookingId,
   });
 
   // Fetch signed URLs for custody photos
   const { data: signedUrls = {} } = useQuery<Record<string, string>>({
-    queryKey: ['custody_signed_urls', photos],
+    queryKey: ['custody_signed_urls', bookingId, photos],
     queryFn: async () => {
       if (photos.length === 0) return {};
       const paths = photos.map((p) => p.storage_path);
@@ -108,9 +108,9 @@ export function useCustody(bookingId?: string) {
 
   // Load incidents
   const { data: incidents = [] } = useQuery({
-    queryKey: ['custody_incidents', bookingId],
+    queryKey: ['custody_incidents', bookingId, institutionId],
     queryFn: async () => {
-      if (isMock || !bookingId) return [];
+      if (!bookingId) return [];
       const { data, error } = await supabase
         .from('incidents')
         .select('*')
@@ -119,37 +119,24 @@ export function useCustody(bookingId?: string) {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!bookingId,
+    enabled: !!bookingId,
   });
 
-  // Load timeline
+  // Load timeline via definer RPC
   const { data: timeline = [] } = useQuery<CustodyTimelineItem[]>({
-    queryKey: ['custody_timeline', bookingId],
+    queryKey: ['custody_timeline', bookingId, institutionId],
     queryFn: async () => {
-      if (isMock || !bookingId) return [];
+      if (!bookingId) return [];
       return await getCustodyTimeline(bookingId);
     },
-    enabled: !isMock && !!bookingId,
+    enabled: !!bookingId,
   });
 
-  // Synthesize CustodyRecord for backward compatibility with existing UI
+  // Map to CustodyRecord for backward compatibility with UI
   const custody: CustodyRecord | null = useMemo(() => {
-    if (isMock) {
-      if (!bookingId) {
-        const firstKey = Object.keys(mockCustodyRecords)[0];
-        return mockCustodyRecords[firstKey] ?? null;
-      }
-      return (
-        mockCustodyRecords[bookingId] ||
-        Object.values(mockCustodyRecords).find((r) => r.bookingId === bookingId) ||
-        mockCustodyRecords['cust-rec-001'] ||
-        null
-      );
-    }
-
     if (!bookingData) return null;
     return buildCustodyRecordFromBooking(bookingData as never, timeline as never);
-  }, [bookingData, timeline, bookingId]);
+  }, [bookingData, timeline]);
 
   // Derived metadata from resource
   const requiredPhotoSlots: string[] = useMemo(() => {
@@ -298,7 +285,7 @@ export function useCustody(bookingId?: string) {
     events,
     incidents,
     timeline,
-    loading: isMock ? false : bookingLoading,
+    loading: bookingLoading,
     error: bookingError instanceof Error ? bookingError.message : null,
     refetch,
     // Mutations

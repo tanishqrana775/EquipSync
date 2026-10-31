@@ -1,6 +1,6 @@
 /**
  * src/hooks/useBookings.ts
- * CampusShare – TanStack Query hook for bookings, waitlists, and slot releases.
+ * EquipSync – TanStack Query hook for bookings, waitlists, and slot releases.
  */
 
 import { useMemo, useCallback } from 'react';
@@ -8,7 +8,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../providers/AuthProvider';
 import { Booking } from '../lib/types';
-import { mockBookings } from '../lib/mock/bookings';
 import { mapDbBookingToUi } from '../lib/api/mappers';
 import {
   requestBooking as rpcRequestBooking,
@@ -30,53 +29,56 @@ export interface BookingFilters {
   institutionWide?: boolean;
 }
 
-const isMock = import.meta.env.VITE_USE_MOCKS === 'true';
-
 export function useBookings(filters?: BookingFilters) {
   const queryClient = useQueryClient();
   const { role, profile, user } = useAuth();
+  const institutionId = profile?.institution_id;
+  const userId = user?.id;
 
   const isInstitutionView = filters?.institutionWide ?? role === 'institution';
 
-  // Fetch bookings
+  // Fetch bookings strictly scoped by tenant
   const {
     data: rawBookings = [],
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ['bookings', isInstitutionView ? 'institution' : 'user', profile?.institution_id, user?.id],
+    queryKey: ['bookings', isInstitutionView ? 'institution' : 'user', institutionId, userId],
     queryFn: async () => {
-      if (isMock) return [];
+      if (!institutionId) {
+        return [];
+      }
 
-      let query = supabase.from('bookings').select(`
-        *,
-        resources(name, kind, category, image_path),
-        profiles(full_name, user_type, avatar_url)
-      `);
+      let query = supabase
+        .from('bookings')
+        .select(`
+          *,
+          resources(name, kind, category, image_path),
+          profiles(full_name, user_type, avatar_url)
+        `)
+        .eq('institution_id', institutionId);
 
-      if (isInstitutionView && profile?.institution_id) {
-        query = query.eq('institution_id', profile.institution_id);
-      } else if (user?.id) {
-        query = query.eq('user_id', user.id);
+      if (!isInstitutionView) {
+        if (!userId) return [];
+        query = query.eq('user_id', userId);
       }
 
       const { data, error } = await query.order('start_at', { ascending: false });
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && (!!profile?.institution_id || !!user?.id),
+    enabled: !!institutionId && (isInstitutionView || !!userId),
   });
 
   // Map to UI Bookings
   const allBookings: Booking[] = useMemo(() => {
-    if (isMock) return mockBookings;
     return rawBookings.map((b) => mapDbBookingToUi(b as never));
   }, [rawBookings]);
 
   // Filtered bookings
   const bookings: Booking[] = useMemo(() => {
-    if (!filters?.status) return allBookings;
+    if (!filters?.status || filters.status === 'All') return allBookings;
     return allBookings.filter((b) => b.status === filters.status);
   }, [allBookings, filters?.status]);
 
@@ -109,34 +111,34 @@ export function useBookings(filters?: BookingFilters) {
   );
 
   // -------------------------------------------------------------------------
-  // Waitlist query
+  // Waitlist query (scoped to caller via definer RPC)
   // -------------------------------------------------------------------------
   const { data: waitlist = [], refetch: refetchWaitlist } = useQuery<WaitlistEntryWithPosition[]>({
-    queryKey: ['my_waitlist'],
+    queryKey: ['my_waitlist', institutionId, userId],
     queryFn: async () => {
-      if (isMock) return [];
+      if (!userId || !institutionId) return [];
       return await rpcMyWaitlist();
     },
-    enabled: !isMock && role === 'user',
+    enabled: !!institutionId && !!userId && role === 'user',
   });
 
   // -------------------------------------------------------------------------
-  // Open released slots query
+  // Open released slots query (scoped by institution_id)
   // -------------------------------------------------------------------------
   const { data: releasedSlots = [], refetch: refetchSlots } = useQuery<ReleasedSlot[]>({
-    queryKey: ['released_slots', profile?.institution_id],
+    queryKey: ['released_slots', institutionId, userId],
     queryFn: async () => {
-      if (isMock || !profile?.institution_id) return [];
+      if (!institutionId) return [];
       const { data, error } = await supabase
         .from('released_slots')
         .select('*')
-        .eq('institution_id', profile.institution_id)
+        .eq('institution_id', institutionId)
         .eq('status', 'open')
         .order('start_at');
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!profile?.institution_id,
+    enabled: !!institutionId,
   });
 
   // -------------------------------------------------------------------------
@@ -150,7 +152,7 @@ export function useBookings(filters?: BookingFilters) {
       toast.success(
         newBk.status === 'approved'
           ? 'Booking approved automatically!'
-          : 'Booking submitted for review'
+          : 'Reservation submitted for review'
       );
     },
     onError: (err) => {
@@ -185,7 +187,7 @@ export function useBookings(filters?: BookingFilters) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bookings'] });
       void queryClient.invalidateQueries({ queryKey: ['released_slots'] });
-      toast.success('Slot released to campus community');
+      toast.success('Slot released to organisation members');
     },
     onError: (err) => {
       toastError(err, 'Failed to release booking slot');
@@ -208,7 +210,7 @@ export function useBookings(filters?: BookingFilters) {
     mutationFn: rpcJoinWaitlist,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['my_waitlist'] });
-      toast.success('Joined waitlist queue');
+      toast.success('Joined priority waitlist queue');
     },
     onError: (err) => {
       toastError(err, 'Failed to join waitlist');
@@ -235,7 +237,8 @@ export function useBookings(filters?: BookingFilters) {
     history,
     waitlist,
     releasedSlots,
-    loading,
+    loading: institutionId ? loading : false,
+    hasInstitution: !!institutionId,
     error: queryError instanceof Error ? queryError.message : null,
     refetch: () => {
       void refetch();

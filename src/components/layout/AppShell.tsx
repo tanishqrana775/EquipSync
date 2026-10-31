@@ -21,9 +21,10 @@ import {
   Building2,
   Search,
 } from 'lucide-react';
-import { mockResources } from '@/lib/mock/resources';
+import { useResources } from '@/hooks/useResources';
 
 export function AppShell() {
+  const { resources } = useResources();
   const [searchOpen, setSearchOpen] = React.useState(false);
   const navigate = useNavigate();
 
@@ -108,7 +109,7 @@ export function AppShell() {
             </CommandGroup>
             <CommandSeparator />
             <CommandGroup heading="Quick Resource Search">
-              {mockResources.slice(0, 5).map((resource) => (
+              {resources.slice(0, 5).map((resource) => (
                 <CommandItem
                   key={resource.id}
                   onSelect={() => handleSelectRoute('/app/discover')}

@@ -339,6 +339,25 @@ export async function institutionStats(institutionId: string): Promise<Instituti
   throw new Error('institution_stats: unexpected response shape');
 }
 
+export interface PublicStats {
+  institutions: number;
+  resources: number;
+}
+
+export async function getPublicStats(): Promise<PublicStats | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_public_stats');
+    if (error || !data || typeof data !== 'object') return null;
+    const candidate = data as Record<string, unknown>;
+    return {
+      institutions: Number(candidate.institutions ?? 0),
+      resources: Number(candidate.resources ?? 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Context & Institution RPCs
 // ---------------------------------------------------------------------------

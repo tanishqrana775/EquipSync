@@ -1,9 +1,14 @@
+/**
+ * src/providers/AuthProvider.tsx
+ * EquipSync – Supabase Session & Context Provider.
+ */
+
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { getMyContext } from '../lib/api/rpc';
 import { User, UserRole } from '../lib/types';
-import { mockUsers } from '../lib/mock/users';
+import { queryClient } from '../lib/queryClient';
 import type { Database } from '../lib/database.types';
 
 export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
@@ -28,29 +33,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const isMockMode = import.meta.env.VITE_USE_MOCKS === 'true';
+const ANONYMOUS_USER: User = {
+  id: '',
+  name: 'EquipSync Member',
+  email: '',
+  role: 'user',
+  department: 'Member',
+  campusId: '',
+  avatar: '',
+  isVerified: false,
+  joinedDate: '',
+};
 
 function mapProfileToUser(
   profile: ProfileRow | null,
   session: Session | null,
-  fallbackRole: UserRole,
   institutionName: string | null
 ): User {
   if (!profile || !session) {
-    return mockUsers[fallbackRole];
+    return ANONYMOUS_USER;
   }
 
   const role: UserRole = profile.role === 'institution_admin' ? 'institution' : 'user';
   return {
     id: profile.id,
-    name: profile.full_name || session.user.email?.split('@')[0] || 'Campus Member',
+    name: profile.full_name || session.user.email?.split('@')[0] || 'Member',
     email: session.user.email || '',
     role,
-    department: institutionName || profile.user_type || 'Campus Facility',
+    department: institutionName || profile.user_type || 'General Organisation',
     campusId: profile.id.slice(0, 8).toUpperCase(),
     avatar: profile.avatar_url || '',
     isVerified: profile.verification_status === 'verified',
-    joinedDate: profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Recent',
+    joinedDate: profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Active',
   };
 }
 
@@ -60,16 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [institution, setInstitution] = useState<InstitutionRow | null>(null);
   const [institutionName, setInstitutionName] = useState<string | null>(null);
   const [verifiedQualificationIds, setVerifiedQualificationIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(!isMockMode);
-
-  // Fallback demo role for mock mode or manual demo switching
-  const [demoRole, setDemoRole] = useState<UserRole>(() => {
-    const saved = localStorage.getItem('campusshare_demo_role');
-    return saved === 'institution' || saved === 'user' ? saved : 'institution';
-  });
+  const [loading, setLoading] = useState<boolean>(true);
 
   const loadUserContext = useCallback(async (currentSession: Session | null) => {
-    if (isMockMode || !currentSession) {
+    if (!currentSession) {
       setProfile(null);
       setInstitution(null);
       setInstitutionName(null);
@@ -85,7 +93,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setInstitutionName(ctx.institution_name);
       setVerifiedQualificationIds(ctx.verified_qualification_ids);
     } catch {
-      // If get_my_context fails or user has no profile yet, do not break the app
       setProfile(null);
       setInstitution(null);
       setInstitutionName(null);
@@ -103,11 +110,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadUserContext]);
 
   useEffect(() => {
-    if (isMockMode) {
-      setLoading(false);
-      return;
-    }
-
     // Initial session load
     void supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
@@ -115,8 +117,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Listen to auth state transitions
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT') {
+        queryClient.clear();
+      }
+      setSession((prev) => {
+        if (prev?.user?.id && s?.user?.id && prev.user.id !== s.user.id) {
+          queryClient.clear();
+        }
+        return s;
+      });
       void loadUserContext(s);
     });
 
@@ -126,9 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadUserContext]);
 
   const signOut = useCallback(async () => {
-    if (!isMockMode) {
+    try {
       await supabase.auth.signOut();
+    } catch {
+      // Ignore network errors on signOut
     }
+    queryClient.clear();
     setSession(null);
     setProfile(null);
     setInstitution(null);
@@ -136,25 +149,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setVerifiedQualificationIds([]);
   }, []);
 
-  const setRole = (newRole: UserRole) => {
-    setDemoRole(newRole);
-    localStorage.setItem('campusshare_demo_role', newRole);
+  const role: UserRole = profile?.role === 'institution_admin' ? 'institution' : 'user';
+  const isVerified = profile ? profile.verification_status === 'verified' : false;
+  const isAuthenticated = session !== null;
+  const user = mapProfileToUser(profile, session, institutionName);
+
+  const setRole = (_newRole: UserRole) => {
+    // Role is driven by profile; kept for interface compatibility
   };
 
   const switchRole = () => {
-    setRole(effectiveRole === 'institution' ? 'user' : 'institution');
+    // Role is driven by profile; kept for interface compatibility
   };
-
-  // Determine effective role: real profile role takes precedence over demo role
-  const effectiveRole: UserRole = profile
-    ? profile.role === 'institution_admin'
-      ? 'institution'
-      : 'user'
-    : demoRole;
-
-  const isVerified = profile ? profile.verification_status === 'verified' : true;
-  const isAuthenticated = isMockMode ? true : session !== null;
-  const user = mapProfileToUser(profile, session, effectiveRole, institutionName);
 
   return (
     <AuthContext.Provider
@@ -165,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         institutionName,
         verifiedQualificationIds,
         user,
-        role: effectiveRole,
+        role,
         isVerified,
         loading,
         isAuthenticated,

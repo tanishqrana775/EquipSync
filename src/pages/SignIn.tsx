@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Link, useNavigate } from 'react-router-dom';
-import { Building2, GraduationCap, ArrowRight, ShieldCheck, Mail, Lock } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ShieldCheck, Mail, Lock, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useEffect } from 'react';
+import { signIn, resendVerification } from '@/lib/auth';
 import {
   Card,
   CardContent,
@@ -23,7 +25,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
-import { signIn } from '@/lib/auth';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 
@@ -35,26 +36,25 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export function SignIn() {
-  const { setRole, refresh } = useAuth();
+  const { refresh } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedDemoRole, setSelectedDemoRole] = useState<'institution' | 'user'>('institution');
 
+  useEffect(() => {
+    if (searchParams.get('verified') === '1') {
+      toast.success('Email verified successfully! You may now sign in.');
+    }
+  }, [searchParams]);
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: 'd.vance@stanford.edu',
-      password: 'password123',
+      email: '',
+      password: '',
     },
   });
 
   const onSubmit = async (values: LoginFormValues) => {
-    if (import.meta.env.VITE_USE_MOCKS === 'true') {
-      setRole(selectedDemoRole);
-      navigate(selectedDemoRole === 'institution' ? '/app/institution' : '/app/user');
-      return;
-    }
-
     try {
       setIsSubmitting(true);
       const session = await signIn(values.email, values.password);
@@ -62,20 +62,38 @@ export function SignIn() {
       toast.success('Signed in successfully');
       const metaRole = session.user.user_metadata?.role;
       if (metaRole === 'institution_admin') {
-        navigate('/app/institution');
+        navigate('/app/institution', { replace: true });
       } else {
-        navigate('/app/user');
+        navigate('/app/user', { replace: true });
       }
-    } catch (err) {
-      toastError(err, 'Failed to sign in. Please verify your campus credentials.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+        toast.error('Email not confirmed. Please verify your email before signing in.', {
+          action: {
+            label: 'Resend',
+            onClick: () => {
+              void resendVerification(values.email)
+                .then(() => toast.success('Verification link resent. Please check your inbox.'))
+                .catch((e: unknown) => {
+                  const rMsg = e instanceof Error ? e.message : String(e);
+                  if (rMsg.toLowerCase().includes('rate') || rMsg.toLowerCase().includes('limit')) {
+                    toast.error('Too many emails requested. Please wait a few minutes.');
+                  } else {
+                    toastError(e, 'Failed to resend verification email');
+                  }
+                });
+            },
+          },
+        });
+      } else if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit')) {
+        toast.error('Too many emails requested. Please wait a few minutes.');
+      } else {
+        toastError(err, 'Failed to sign in. Please verify your credentials.');
+      }
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleQuickDemoLaunch = (role: 'institution' | 'user') => {
-    setRole(role);
-    navigate(role === 'institution' ? '/app/institution' : '/app/user');
   };
   return (
     <div className="w-full max-w-md animate-fade-in">
@@ -85,49 +103,14 @@ export function SignIn() {
             <ShieldCheck className="h-6 w-6" />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">
-            Sign in to CampusShare
+            Sign in to EquipSync
           </CardTitle>
           <CardDescription className="text-xs">
-            Enter your university credentials or launch a one-click demo
+            Enter your credentials to access shared equipment and spaces
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-5">
-          {/* Quick Demo Access Switcher */}
-          <div className="rounded-xl border border-border/80 bg-muted/40 p-3 space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground text-center">
-              One-Click Demo Bypass
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant={selectedDemoRole === 'institution' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setSelectedDemoRole('institution');
-                  form.setValue('email', 'd.vance@stanford.edu');
-                }}
-                className="gap-1.5 text-xs h-9 font-medium"
-              >
-                <Building2 className="h-3.5 w-3.5" />
-                <span>Institution Admin</span>
-              </Button>
-              <Button
-                type="button"
-                variant={selectedDemoRole === 'user' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setSelectedDemoRole('user');
-                  form.setValue('email', 'sarah.chen@student.stanford.edu');
-                }}
-                className="gap-1.5 text-xs h-9 font-medium"
-              >
-                <GraduationCap className="h-3.5 w-3.5" />
-                <span>Student / User</span>
-              </Button>
-            </div>
-          </div>
-
+        <CardContent className="space-y-4">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -136,7 +119,7 @@ export function SignIn() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">
-                      Campus Email Address
+                      Work / Institutional Email
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
@@ -162,9 +145,9 @@ export function SignIn() {
                       <FormLabel className="text-xs font-semibold">
                         Password
                       </FormLabel>
-                      <span className="text-[11px] text-primary hover:underline cursor-pointer">
-                        Forgot?
-                      </span>
+                      <Link to="/forgot-password" className="text-[11px] text-primary hover:underline cursor-pointer">
+                        Forgot password?
+                      </Link>
                     </div>
                     <FormControl>
                       <div className="relative">
@@ -194,11 +177,8 @@ export function SignIn() {
           <div>
             Don't have an account?{' '}
             <Link to="/register" className="font-semibold text-primary hover:underline">
-              Register with Student ID
+              Create an account
             </Link>
-          </div>
-          <div className="text-[11px] text-muted-foreground/80">
-            Phase 1 Prototype • Supabase Auth hook configured in lib/supabase.ts
           </div>
         </CardFooter>
       </Card>

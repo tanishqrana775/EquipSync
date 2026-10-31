@@ -1,8 +1,6 @@
 import { Outlet, Link } from 'react-router-dom';
 import { Share2 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
-import { RoleSwitcher } from './RoleSwitcher';
-
 export function AuthLayout() {
   return (
     <div className="min-h-screen page-bg flex flex-col justify-between">
@@ -12,10 +10,9 @@ export function AuthLayout() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
             <Share2 className="h-5 w-5" />
           </div>
-          <span className="text-lg font-bold text-foreground">CampusShare</span>
+          <span className="text-lg font-bold text-foreground">EquipSync</span>
         </Link>
         <div className="flex items-center gap-2">
-          <RoleSwitcher />
           <ThemeToggle />
         </div>
       </header>
@@ -27,7 +24,7 @@ export function AuthLayout() {
 
       {/* Auth Footer */}
       <footer className="p-4 text-center text-xs text-muted-foreground">
-        CampusShare • Centralized Campus Resource Management Platform
+        EquipSync • Trusted Equipment & Space Sharing Platform
       </footer>
     </div>
   );

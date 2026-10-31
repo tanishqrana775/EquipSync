@@ -4,9 +4,9 @@
  *
  * Maps Postgres / Supabase exception codes into human-friendly UI messages.
  */
-
 import { toast } from 'sonner';
-import { CampusShareError } from './supabase';
+import { CampusShareError, EquipSyncError } from './supabase';
+export { CampusShareError, EquipSyncError };
 
 const ERROR_MAP: Record<string, string> = {
   not_authenticated: 'Please sign in to continue.',
@@ -17,6 +17,7 @@ const ERROR_MAP: Record<string, string> = {
   slot_taken: 'This time slot has just been taken. Please choose different dates.',
   invalid_state: "This action is not allowed in the booking's current state.",
   outside_window: 'Check-out is only allowed within 15 minutes of the booking start and before the end time.',
+  notes_required: 'Detailed notes are required when reporting damaged equipment or missing components.',
   not_found: 'The requested item could not be found.',
 };
 

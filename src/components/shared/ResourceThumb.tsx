@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { Resource } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
-import { MapPin, Building, Users } from 'lucide-react';
+import { MapPin, Box } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ResourceThumbProps {
@@ -14,6 +15,9 @@ export function ResourceThumb({
   onClick,
   className,
 }: ResourceThumbProps) {
+  const [hasError, setHasError] = useState(false);
+  const showImage = resource.imageUrl && !hasError;
+
   return (
     <div
       onClick={onClick}
@@ -23,13 +27,23 @@ export function ResourceThumb({
       )}
     >
       {/* Image Thumbnail Header */}
-      <div className="relative aspect-video w-full overflow-hidden bg-muted">
-        <img
-          src={resource.imageUrl}
-          alt={resource.title}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
-        />
+      <div className="relative aspect-video w-full overflow-hidden bg-muted flex items-center justify-center">
+        {showImage ? (
+          <img
+            src={resource.imageUrl}
+            alt={resource.title}
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            loading="lazy"
+            onError={() => setHasError(true)}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-muted-foreground p-4">
+            <Box className="h-8 w-8 text-primary/40 mb-1" />
+            <span className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground/60">
+              EquipSync Asset
+            </span>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80" />
 
         <div className="absolute top-3 left-3">

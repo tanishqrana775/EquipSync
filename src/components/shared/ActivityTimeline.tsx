@@ -1,5 +1,4 @@
 import { ActivityItem } from '@/lib/types';
-import { mockActivities } from '@/lib/mock/activity';
 import { CheckCircle2, Clock, ShieldCheck, Box, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -10,7 +9,7 @@ interface ActivityTimelineProps {
 }
 
 export function ActivityTimeline({
-  items = mockActivities,
+  items = [],
   limit,
   className,
 }: ActivityTimelineProps) {

@@ -35,7 +35,10 @@ export function BookingCustody() {
     booking,
     requiredPhotoSlots,
     accessories,
+    photos,
     signedPhotoUrls,
+    events,
+    incidents,
     loading,
     submitCheckOut,
     submitCheckIn,
@@ -45,11 +48,11 @@ export function BookingCustody() {
 
   // Photo capture state (slot -> File)
   const [capturedPhotos, setCapturedPhotos] = useState<Record<string, File>>({});
-  const [condition, setCondition] = useState<'good' | 'minor_wear' | 'damaged' | 'missing_parts'>('good');
+  const [returnRadio, setReturnRadio] = useState<'working' | 'safe' | 'damaged' | null>(null);
   const [notes, setNotes] = useState('');
   const [accessoryStates, setAccessoryStates] = useState<Record<string, 'present' | 'missing' | 'damaged'>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [incidentNotice, setIncidentNotice] = useState<string | null>(null);
   // Return inspection state (admin)
   const [inspectNotes, setInspectNotes] = useState('');
   const [isInspecting, setIsInspecting] = useState(false);
@@ -81,6 +84,25 @@ export function BookingCustody() {
   const isEligibleForReturn = booking?.status === 'checked_out';
   const isPendingInspection = booking?.status === 'returned' && role === 'institution';
 
+  // Quality gate calculations
+  const allAccessoriesChecked = accessories.length === 0 || accessories.every((acc) => !!accessoryStates[acc.id]);
+  const hasMissingAccessory = Object.values(accessoryStates).some((s) => s === 'missing');
+  const effectiveCondition: 'good' | 'minor_wear' | 'damaged' | 'missing_parts' = hasMissingAccessory
+    ? 'missing_parts'
+    : returnRadio === 'damaged'
+    ? 'damaged'
+    : returnRadio === 'safe'
+    ? 'minor_wear'
+    : 'good';
+
+  const isNotesRequired = (effectiveCondition === 'damaged' || effectiveCondition === 'missing_parts') && isEligibleForReturn;
+  const isCheckInDisabled =
+    !returnRadio ||
+    missingSlots.length > 0 ||
+    !allAccessoriesChecked ||
+    (isNotesRequired && !notes.trim()) ||
+    isSubmitting;
+  const isCheckOutDisabled = missingSlots.length > 0 || isSubmitting;
   const handlePhotoSelect = (slot: string, file: File | null) => {
     if (!file) return;
     setCapturedPhotos((prev) => ({ ...prev, [slot]: file }));
@@ -109,20 +131,24 @@ export function BookingCustody() {
       if (phase === 'checkout') {
         await submitCheckOut({
           photos: photoInputs,
-          condition,
+          condition: 'good',
           notes: notes || 'Verified during handover',
           accessoryChecks: checks,
         });
       } else {
         await submitCheckIn({
           photos: photoInputs,
-          condition,
+          condition: effectiveCondition,
           notes: notes || 'Returned to locker',
           accessoryChecks: checks,
         });
+        if (effectiveCondition === 'damaged' || effectiveCondition === 'missing_parts') {
+          setIncidentNotice('An incident was automatically opened and organisation administrators were notified of this defect.');
+        }
       }
       setCapturedPhotos({});
       setNotes('');
+      setReturnRadio(null);
     } catch (err) {
       toastError(err, `${phase === 'checkout' ? 'Check-out' : 'Check-in'} failed`);
     } finally {
@@ -390,40 +416,94 @@ export function BookingCustody() {
             </div>
           )}
 
+          {/* Return Quality Gate Radio Group (Check-in Mode) */}
+          {isEligibleForReturn && (
+            <div className="space-y-3 pt-2 border-t border-border/60">
+              <label className="text-xs font-bold text-foreground block">
+                Equipment Operational State (Required):
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { id: 'working', label: 'Working', desc: 'Fully functional, no defects' },
+                  { id: 'safe', label: 'Safe', desc: 'Usable with minor cosmetic wear' },
+                  { id: 'damaged', label: 'Damaged', desc: 'Broken, malfunctioning, defect' },
+                ].map((opt) => (
+                  <label
+                    key={opt.id}
+                    className={`p-3 rounded-xl border flex flex-col gap-1 cursor-pointer transition-all ${
+                      returnRadio === opt.id
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                        : 'border-border/80 hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="returnCondition"
+                        value={opt.id}
+                        checked={returnRadio === opt.id}
+                        onChange={() => setReturnRadio(opt.id as never)}
+                        className="text-primary focus:ring-primary"
+                      />
+                      <span className="text-xs font-bold text-foreground">{opt.label}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground pl-5">{opt.desc}</span>
+                  </label>
+                ))}
+              </div>
+              {hasMissingAccessory && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                  Notice: Missing accessory detected. Return condition automatically set to missing_parts.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Condition and Notes */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-            <div>
-              <label className="font-semibold block mb-1">Overall Condition</label>
-              <select
-                value={condition}
-                onChange={(e) => setCondition(e.target.value as never)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs"
-              >
-                <option value="good">Good (No flaws)</option>
-                <option value="minor_wear">Minor Cosmetic Wear</option>
-                <option value="damaged">Damaged</option>
-                <option value="missing_parts">Missing Parts</option>
-              </select>
-            </div>
-            <div>
-              <label className="font-semibold block mb-1">Handover Notes</label>
-              <Input
-                placeholder="Any special remarks or custody observations..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="h-9 text-xs"
-              />
-            </div>
+          <div className="space-y-2 pt-1">
+            <label className="font-semibold text-xs block">
+              {isEligibleForReturn ? 'Return Notes' : 'Handover Notes'}
+              {isNotesRequired && <span className="text-destructive font-bold ml-1">* Required</span>}
+            </label>
+            <Input
+              placeholder={
+                isNotesRequired
+                  ? 'Please describe damage or missing parts in detail...'
+                  : 'Any remarks or custody observations...'
+              }
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={`h-9 text-xs ${isNotesRequired && !notes.trim() ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+            />
+            {isNotesRequired && !notes.trim() && (
+              <p className="text-[11px] text-destructive font-medium">
+                Detailed return notes are required when reporting damaged equipment or missing parts.
+              </p>
+            )}
           </div>
 
-          {/* Gated Action Button via validateRequiredSlots */}
+          {/* Incident notice if recorded */}
+          {incidentNotice && (
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{incidentNotice}</span>
+            </div>
+          )}
+
+          {/* Gated Action Button via Quality Gate */}
           <div className="flex justify-end pt-2">
             <Button
-              disabled={missingSlots.length > 0 || isSubmitting}
+              disabled={isEligibleForHandover ? isCheckOutDisabled : isCheckInDisabled}
               onClick={() => handleHandoverSubmit(isEligibleForHandover ? 'checkout' : 'checkin')}
               className="gap-2 font-semibold shadow-sm"
             >
-              <span>{isSubmitting ? 'Verifying & Uploading...' : isEligibleForHandover ? 'Confirm Check-Out Handover' : 'Submit Return Check-In'}</span>
+              <span>
+                {isSubmitting
+                  ? 'Verifying & Uploading...'
+                  : isEligibleForHandover
+                  ? 'Confirm Check-Out Handover'
+                  : 'Submit Return Check-In'}
+              </span>
               <Check className="h-4 w-4" />
             </Button>
           </div>
@@ -433,15 +513,65 @@ export function BookingCustody() {
       {/* Admin Return Inspection Section */}
       {isPendingInspection && (
         <div className="surface p-6 rounded-2xl border-2 border-emerald-500/40 bg-emerald-50/10 dark:bg-emerald-950/10 space-y-4">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-emerald-600" />
-            <h3 className="text-base font-bold text-foreground">
-              Official Custodian Inspection
-            </h3>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-emerald-600" />
+              <h3 className="text-base font-bold text-foreground">
+                Official Return Inspection Panel
+              </h3>
+            </div>
+            <Badge variant="outline" className="text-xs">
+              Inspection Required
+            </Badge>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Borrower has submitted check-in photos. Inspect the equipment condition to close the custody record or open a dispute.
-          </p>
+
+          {/* Borrower Return Report Details */}
+          <div className="p-4 rounded-xl bg-background border border-border/70 space-y-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+              <div>
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold">Borrower Condition Report</span>
+                <span className="font-semibold text-foreground capitalize">
+                  {events.find((e) => e.phase === 'checkin')?.condition || 'Standard Return'}
+                </span>
+              </div>
+              {incidents.length > 0 && (
+                <Badge variant="destructive" className="text-[10px] font-bold">
+                  {incidents.length} Incident(s) Logged
+                </Badge>
+              )}
+            </div>
+
+            <div>
+              <span className="text-muted-foreground block text-[10px] uppercase font-bold mb-0.5">Borrower Return Notes</span>
+              <p className="text-foreground bg-muted/30 p-2.5 rounded-lg border border-border/50">
+                {events.find((e) => e.phase === 'checkin')?.notes || 'No defects noted by borrower.'}
+              </p>
+            </div>
+
+            {/* Return Photos Thumbnail Strip */}
+            {photos.filter((p) => p.phase === 'checkin').length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <span className="text-muted-foreground block text-[10px] uppercase font-bold">Return Photo Evidence</span>
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {photos
+                    .filter((p) => p.phase === 'checkin')
+                    .map((p) => (
+                      <div key={p.id} className="relative rounded-lg overflow-hidden border border-border h-16 w-16 shrink-0 bg-muted">
+                        <img
+                          src={signedPhotoUrls[p.storage_path] || ''}
+                          alt={p.slot}
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white text-center py-0.5 capitalize truncate">
+                          {p.slot}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <Input
             placeholder="Inspection observations and restock approval notes..."
             value={inspectNotes}

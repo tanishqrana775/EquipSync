@@ -1,6 +1,6 @@
 /**
  * src/hooks/useInstitutionStats.ts
- * CampusShare – TanStack Query hook for administrative statistics, fleet utilisation & audit logs.
+ * EquipSync – TanStack Query hook for administrative statistics, fleet utilisation & audit logs.
  */
 
 import { useMemo } from 'react';
@@ -8,14 +8,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../providers/AuthProvider';
 import { DashboardStats, ActivityItem } from '../lib/types';
-import { mockInstitutionStats, mockActivities } from '../lib/mock/activity';
 import { institutionStats as rpcInstitutionStats, verifyMember as rpcVerifyMember } from '../lib/api/rpc';
 import { mapDbAuditLogToActivity } from '../lib/api/mappers';
 import { toastError } from '../lib/errors';
 import { toast } from 'sonner';
 import type { Database } from '../lib/database.types';
-
-const isMock = import.meta.env.VITE_USE_MOCKS === 'true';
 
 export interface UtilisationRow {
   resource_id: string;
@@ -27,10 +24,20 @@ export interface UtilisationRow {
   is_underutilised: boolean;
 }
 
+const EMPTY_STATS: DashboardStats = {
+  totalResources: 0,
+  activeBookings: 0,
+  availableResources: 0,
+  utilisationRate: 0,
+  pendingApprovals: 0,
+  overdueReturns: 0,
+};
+
 export function useInstitutionStats() {
   const queryClient = useQueryClient();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const institutionId = profile?.institution_id;
+  const userId = user?.id;
 
   // 1. Institution Stats RPC
   const {
@@ -39,23 +46,23 @@ export function useInstitutionStats() {
     error: statsError,
     refetch: refetchStats,
   } = useQuery({
-    queryKey: ['institution_stats', institutionId],
+    queryKey: ['institution_stats', institutionId, userId],
     queryFn: async () => {
-      if (isMock || !institutionId) return null;
+      if (!institutionId) return null;
       return await rpcInstitutionStats(institutionId);
     },
-    enabled: !isMock && !!institutionId,
+    enabled: !!institutionId,
   });
 
-  // 2. Resource Utilisation View
+  // 2. Resource Utilisation View (scoped to institution_id)
   const {
     data: utilisation = [],
     isLoading: utilLoading,
     refetch: refetchUtil,
   } = useQuery<UtilisationRow[]>({
-    queryKey: ['resource_utilisation', institutionId],
+    queryKey: ['resource_utilisation', institutionId, userId],
     queryFn: async () => {
-      if (isMock || !institutionId) return [];
+      if (!institutionId) return [];
       const { data, error } = await supabase
         .from('resource_utilisation')
         .select(`
@@ -71,18 +78,18 @@ export function useInstitutionStats() {
       if (error) throw error;
       return (data as UtilisationRow[]) ?? [];
     },
-    enabled: !isMock && !!institutionId,
+    enabled: !!institutionId,
   });
 
-  // 3. Pending Verification Members
+  // 3. Pending Verification Members (scoped to institution_id)
   const {
     data: pendingMembers = [],
     isLoading: membersLoading,
     refetch: refetchMembers,
   } = useQuery<Database['public']['Tables']['profiles']['Row'][]>({
-    queryKey: ['pending_members', institutionId],
+    queryKey: ['pending_members', institutionId, userId],
     queryFn: async () => {
-      if (isMock || !institutionId) return [];
+      if (!institutionId) return [];
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -93,18 +100,18 @@ export function useInstitutionStats() {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!institutionId,
+    enabled: !!institutionId,
   });
 
-  // 4. Recent Audit Log (Activity Feed)
+  // 4. Recent Audit Log (Activity Feed - scoped to institution_id)
   const {
     data: rawAuditLogs = [],
     isLoading: auditLoading,
     refetch: refetchAudit,
   } = useQuery({
-    queryKey: ['recent_audit_log', institutionId],
+    queryKey: ['recent_audit_log', institutionId, userId],
     queryFn: async () => {
-      if (isMock || !institutionId) return [];
+      if (!institutionId) return [];
       const { data, error } = await supabase
         .from('audit_log')
         .select('*')
@@ -115,12 +122,11 @@ export function useInstitutionStats() {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: !isMock && !!institutionId,
+    enabled: !!institutionId,
   });
 
   // Map to UI ActivityItem
   const activity: ActivityItem[] = useMemo(() => {
-    if (isMock) return mockActivities;
     return rawAuditLogs.map(mapDbAuditLogToActivity);
   }, [rawAuditLogs]);
 
@@ -131,7 +137,7 @@ export function useInstitutionStats() {
 
   // Map to UI DashboardStats shape expected by components
   const stats: DashboardStats = useMemo(() => {
-    if (isMock || !rpcStats) return mockInstitutionStats;
+    if (!rpcStats) return EMPTY_STATS;
     const total = rpcStats.total_resources || 0;
     const inUse = rpcStats.in_use_now || 0;
     const avail = Math.max(0, total - inUse);
@@ -157,8 +163,8 @@ export function useInstitutionStats() {
 
   // Verify Member mutation
   const verifyMemberMutation = useMutation({
-    mutationFn: async ({ userId, approve }: { userId: string; approve: boolean }) => {
-      return await rpcVerifyMember({ userId, approve });
+    mutationFn: async ({ userId: targetUserId, approve }: { userId: string; approve: boolean }) => {
+      return await rpcVerifyMember({ userId: targetUserId, approve });
     },
     onSuccess: (_res, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['pending_members', institutionId] });
@@ -173,7 +179,7 @@ export function useInstitutionStats() {
     await Promise.all([refetchStats(), refetchUtil(), refetchMembers(), refetchAudit()]);
   };
 
-  const loading = isMock ? false : statsLoading || utilLoading || membersLoading || auditLoading;
+  const loading = institutionId ? (statsLoading || utilLoading || membersLoading || auditLoading) : false;
 
   return {
     stats,
@@ -183,9 +189,10 @@ export function useInstitutionStats() {
     pendingMembers,
     activity,
     loading,
+    hasInstitution: !!institutionId,
     error: statsError instanceof Error ? statsError.message : null,
     refetch,
-    verifyMember: (userId: string, approve: boolean) =>
-      verifyMemberMutation.mutateAsync({ userId, approve }),
+    verifyMember: (targetUserId: string, approve: boolean) =>
+      verifyMemberMutation.mutateAsync({ userId: targetUserId, approve }),
   };
 }

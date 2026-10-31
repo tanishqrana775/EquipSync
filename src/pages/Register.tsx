@@ -23,9 +23,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
-import { signUpMember, signUpInstitution, listInstitutions, Institution } from '@/lib/auth';
+import { signUpMember, signUpInstitution, listInstitutions, resendVerification, Institution } from '@/lib/auth';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
+import { Mail, RefreshCw } from 'lucide-react';
 
 const registerSchema = z.object({
   accountType: z.enum(['member', 'institution_admin']),
@@ -48,6 +49,17 @@ export function Register() {
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountType, setAccountType] = useState<'member' | 'institution_admin'>('member');
+  const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   useEffect(() => {
     let mounted = true;
@@ -73,60 +85,127 @@ export function Register() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       accountType: 'member',
-      fullName: 'Sarah Chen',
-      campusId: 'STU-49102',
-      department: 'School of Design & Robotics',
-      email: 'sarah.chen@student.stanford.edu',
-      password: 'password123',
+      fullName: '',
+      campusId: '',
+      department: '',
+      email: '',
+      password: '',
       userType: 'student',
       institutionId: '',
-      institutionName: 'Stanford Institute of Technology',
-      institutionType: 'university',
+      institutionName: '',
+      institutionType: 'University',
     },
   });
 
   const onSubmit = async (values: RegisterFormValues) => {
-    if (import.meta.env.VITE_USE_MOCKS === 'true') {
-      setRole(accountType === 'institution_admin' ? 'institution' : 'user');
-      navigate(accountType === 'institution_admin' ? '/app/institution' : '/app/user');
-      return;
-    }
-
     try {
       setIsSubmitting(true);
+      let res: { user?: unknown; session?: unknown } | null = null;
       if (accountType === 'institution_admin') {
-        await signUpInstitution({
+        res = await signUpInstitution({
           email: values.email,
           password: values.password,
           fullName: values.fullName,
-          institutionName: values.institutionName || 'My Campus Hub',
-          institutionType: values.institutionType || 'university',
-        });
-        toast.success('Institution created successfully! Please sign in.');
-        navigate('/login');
+          institutionName: values.institutionName || 'My Organisation Hub',
+          institutionType: values.institutionType || 'University',
+        }) as { user?: unknown; session?: unknown };
       } else {
         const instId = values.institutionId || institutions[0]?.id;
         if (!instId) {
-          toast.error('Please select an institution or register a new one.');
+          toast.error('Please select an organisation or register a new one.');
           return;
         }
-        await signUpMember({
+        res = await signUpMember({
           email: values.email,
           password: values.password,
           fullName: values.fullName,
           userType: values.userType,
           institutionId: instId,
-        });
-        toast.success('Registration submitted! Your account is pending verification.');
-        navigate('/login');
+        }) as { user?: unknown; session?: unknown };
       }
-    } catch (err) {
+
+      const candidateUser = res?.user && typeof res.user === 'object' ? (res.user as { identities?: unknown[] }) : null;
+      if (candidateUser?.identities && Array.isArray(candidateUser.identities) && candidateUser.identities.length === 0) {
+        toast.error('An account with this email may already exist. Try signing in or resetting your password.');
+        return;
+      }
+
+      if (!res?.session) {
+        toast.success('Registration successful. Please check your email to verify your account.');
+        setRegisteredEmail(values.email);
+        setResendCooldown(60);
+        return;
+      }
+
+      toast.success('Registration completed successfully!');
+      navigate(accountType === 'institution_admin' ? '/app/institution' : '/app/user', { replace: true });
+    } catch (err: unknown) {
       toastError(err, 'Failed to complete registration. Please check your information.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleResend = async () => {
+    if (!registeredEmail || resendCooldown > 0) return;
+    try {
+      setIsResending(true);
+      await resendVerification(registeredEmail);
+      toast.success('Verification link resent. Please check your inbox.');
+      setResendCooldown(60);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit')) {
+        toast.error('Too many emails requested. Please wait a few minutes.');
+      } else {
+        toastError(err, 'Failed to resend verification email');
+      }
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  if (registeredEmail) {
+    return (
+      <div className="w-full max-w-md animate-fade-in">
+        <Card className="surface border-border/80 shadow-xl text-center">
+          <CardHeader className="space-y-2 pb-4">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-2">
+              <Mail className="h-6 w-6" />
+            </div>
+            <CardTitle className="text-2xl font-bold tracking-tight">
+              Verify Your Email
+            </CardTitle>
+            <CardDescription className="text-xs leading-relaxed max-w-xs mx-auto">
+              We have sent a verification link to <strong className="text-foreground">{registeredEmail}</strong>. Please click the link to activate your account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-2">
+            <Button
+              variant="outline"
+              disabled={resendCooldown > 0 || isResending}
+              onClick={handleResend}
+              className="w-full gap-2 text-xs font-semibold"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isResending ? 'animate-spin' : ''}`} />
+              <span>
+                {resendCooldown > 0
+                  ? `Resend Verification Email (${resendCooldown}s)`
+                  : isResending
+                  ? 'Resending...'
+                  : 'Resend Verification Email'}
+              </span>
+            </Button>
+          </CardContent>
+          <CardFooter className="border-t border-border/60 pt-4 text-center justify-center text-xs text-muted-foreground">
+            <Link to="/login" className="font-semibold text-primary hover:underline">
+              Back to Sign In
+            </Link>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
   return (
     <div className="w-full max-w-md animate-fade-in">
       <Card className="surface border-border/80 shadow-xl">
@@ -135,10 +214,10 @@ export function Register() {
             <UserPlus className="h-6 w-6" />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">
-            Create Campus Account
+            Create EquipSync Account
           </CardTitle>
           <CardDescription className="text-xs">
-            Join the verified campus resource sharing directory
+            Join the verified equipment and space sharing network
           </CardDescription>
         </CardHeader>
 
@@ -158,7 +237,7 @@ export function Register() {
               }`}
             >
               <GraduationCap className="h-3.5 w-3.5" />
-              <span>Campus Member</span>
+              <span>Member Account</span>
             </button>
             <button
               type="button"
@@ -173,7 +252,7 @@ export function Register() {
               }`}
             >
               <Building2 className="h-3.5 w-3.5" />
-              <span>Institution Admin</span>
+              <span>Organisation Admin</span>
             </button>
           </div>
 
@@ -283,9 +362,9 @@ export function Register() {
                     name="institutionName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-semibold">Institution Name</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Organisation Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. Riverside Tech" {...field} />
+                          <Input placeholder="e.g. Apex Engineering Labs" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -297,9 +376,19 @@ export function Register() {
                     name="institutionType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-semibold">Institution Type</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Organisation Type</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. University" {...field} />
+                          <select
+                            {...field}
+                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          >
+                            <option value="University">University</option>
+                            <option value="College">College</option>
+                            <option value="Workshop">Workshop</option>
+                            <option value="Shop">Shop</option>
+                            <option value="Community lab">Community lab</option>
+                            <option value="Other">Other</option>
+                          </select>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -313,9 +402,9 @@ export function Register() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-semibold">Campus Email</FormLabel>
+                    <FormLabel className="text-xs font-semibold">Email Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="name@university.edu" {...field} />
+                      <Input placeholder="name@organisation.edu" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

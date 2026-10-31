@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { Landing } from '@/pages/Landing';
 import { SignIn } from '@/pages/SignIn';
 import { Register } from '@/pages/Register';
+import { ForgotPassword } from '@/pages/ForgotPassword';
+import { UpdatePassword } from '@/pages/UpdatePassword';
 import { MyBookings } from '@/pages/MyBookings';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
 import { UserDashboard } from '@/pages/UserDashboard';
@@ -11,6 +13,7 @@ import { BookingCustody } from '@/pages/BookingCustody';
 import { AppShell } from '@/components/layout/AppShell';
 import { AuthLayout } from '@/components/layout/AuthLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { PublicRoute } from '@/components/layout/PublicRoute';
 import { Toaster } from '@/components/ui/sonner';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -28,10 +31,32 @@ export function App() {
 
         {/* Authentication Routes */}
         <Route element={<AuthLayout />}>
-          <Route path="/login" element={<SignIn />} />
-          <Route path="/register" element={<Register />} />
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <SignIn />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <PublicRoute>
+                <Register />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/forgot-password"
+            element={
+              <PublicRoute>
+                <ForgotPassword />
+              </PublicRoute>
+            }
+          />
+          <Route path="/update-password" element={<UpdatePassword />} />
         </Route>
-
         {/* Application Dashboard Routes (Protected by AppShell) */}
         <Route
           path="/app"

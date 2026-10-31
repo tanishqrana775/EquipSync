@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Share2, ArrowRight, Menu, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from './ThemeToggle';
-import { RoleSwitcher } from './RoleSwitcher';
 import { useAuth } from '@/providers/AuthProvider';
 
 export function MarketingNav() {
@@ -23,10 +22,10 @@ export function MarketingNav() {
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-extrabold tracking-tight bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-              CampusShare
+              EquipSync
             </span>
             <span className="hidden sm:inline text-[9px] text-muted-foreground uppercase font-semibold tracking-wider -mt-1">
-              Resource Sharing Platform
+              Equipment & Space Sharing
             </span>
           </div>
         </Link>
@@ -62,9 +61,7 @@ export function MarketingNav() {
 
         {/* Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <RoleSwitcher />
           <ThemeToggle />
-
           <div className="hidden sm:flex items-center gap-2">
             <Link to="/login">
               <Button variant="ghost" size="sm">

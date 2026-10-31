@@ -34,6 +34,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useResources } from '@/hooks/useResources';
+import { useAuth } from '@/providers/AuthProvider';
+import { compressImage } from '@/lib/custody';
+import { supabase } from '@/lib/supabase';
+import { toastError } from '@/lib/errors';
+import { toast } from 'sonner';
+import { Upload, ImageIcon, X } from 'lucide-react';
 import { Resource, ResourceCategory } from '@/lib/types';
 
 export function ResourceManagement() {
@@ -45,7 +51,7 @@ export function ResourceManagement() {
     retireResource,
     uploadEvidence,
   } = useResources();
-
+  const { profile } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -55,27 +61,63 @@ export function ResourceManagement() {
   const [newCategory, setNewCategory] = useState('DSLR Cameras');
   const [newTagId, setNewTagId] = useState('');
   const [newLocation, setNewLocation] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-
   const categories = ['All', 'Laptops', 'DSLR Cameras', 'Lab Equipment', 'Seminar Halls', 'Projectors', 'Classrooms', 'Sports Equipment', 'Academic Books'];
+
+  const handleImageSelect = (file: File | null) => {
+    if (!file) {
+      setImageFile(null);
+      setImagePreview(null);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5 MB');
+      return;
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
 
   const handleCreateAsset = async () => {
     if (!newTitle.trim()) {
+      toast.error('Please enter an asset title');
       return;
     }
     try {
       setIsCreating(true);
+      const newResourceId = crypto.randomUUID();
+      let storagePath: string | undefined = undefined;
+
+      if (imageFile && profile?.institution_id) {
+        const compressedBlob = await compressImage(imageFile, 1200, 0.85);
+        const fileId = crypto.randomUUID();
+        storagePath = `${profile.institution_id}/${newResourceId}/${fileId}.jpg`;
+        const { error: upErr } = await supabase.storage
+          .from('resource-images')
+          .upload(storagePath, compressedBlob, { contentType: 'image/jpeg', upsert: true });
+        if (upErr) throw upErr;
+      }
+
       await createResource({
+        id: newResourceId,
         name: newTitle,
         kind: 'equipment',
         category: newCategory,
         asset_tag: newTagId || undefined,
         location: newLocation || undefined,
+        image_path: storagePath,
       });
+
       setAddDialogOpen(false);
       setNewTitle('');
       setNewTagId('');
       setNewLocation('');
+      setImageFile(null);
+      setImagePreview(null);
+    } catch (err: unknown) {
+      toastError(err, 'Failed to create resource');
     } finally {
       setIsCreating(false);
     }
@@ -208,7 +250,7 @@ export function ResourceManagement() {
       <PageHeader
         eyebrow="Asset Management"
         title="Resource Inventory"
-        description="Comprehensive campus registry of shared electronics, optics, audio-visual kits, and instructional spaces."
+        description="Comprehensive registry of shared electronics, tools, instrumentation, and spaces."
       >
         <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
           <DialogTrigger asChild>
@@ -220,10 +262,10 @@ export function ResourceManagement() {
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-bold">
-                Register Campus Resource
+                Register Resource
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Asset will be cataloged and made visible to eligible department students.
+                Asset will be cataloged and made visible to eligible organisation members.
               </DialogDescription>
             </DialogHeader>
 
@@ -262,8 +304,38 @@ export function ResourceManagement() {
                   onChange={(e) => setNewLocation(e.target.value)}
                 />
               </div>
-            </div>
 
+              {/* Image Upload Widget with preview */}
+              <div className="space-y-1 pt-1">
+                <label className="font-semibold text-foreground">Resource Photo (Optional, Max 5MB)</label>
+                {imagePreview ? (
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden border border-border/80 bg-muted">
+                    <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon-sm"
+                      onClick={() => handleImageSelect(null)}
+                      className="absolute top-2 right-2 h-7 w-7 rounded-lg shadow-sm"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center border border-dashed border-border/80 rounded-xl p-4 cursor-pointer hover:bg-muted/40 transition-colors">
+                    <Upload className="h-5 w-5 text-muted-foreground mb-1" />
+                    <span className="text-[11px] font-medium text-foreground">Click to upload photo</span>
+                    <span className="text-[10px] text-muted-foreground">JPEG, PNG, WebP up to 5MB</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => handleImageSelect(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 variant="outline"
@@ -325,7 +397,7 @@ export function ResourceManagement() {
         columns={columns}
         data={filteredResources}
         pageSize={8}
-        emptyMessage="No campus resources matched your filter criteria."
+        emptyMessage="No equipment resources matched your filter criteria."
       />
     </div>
   );

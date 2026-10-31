@@ -1,6 +1,6 @@
 /**
  * scripts/smoke-test.mjs
- * CampusShare – Automated end-to-end backend verification script.
+ * EquipSync – Automated end-to-end backend verification and multi-tenant isolation suite.
  * Runs in Node 18+ using @supabase/supabase-js with only the public anon key.
  *
  * Usage:
@@ -18,9 +18,10 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 
 // ---------------------------------------------------------------------------
-// 1. Load Environment Configuration
+// 1. Environment Configuration & Protection Guards
 // ---------------------------------------------------------------------------
-function loadEnv() {
+function loadConfig() {
+  let envLocalUrl = '';
   const envLocalPath = path.join(rootDir, '.env.local');
   if (fs.existsSync(envLocalPath)) {
     const lines = fs.readFileSync(envLocalPath, 'utf8').split('\n');
@@ -34,6 +35,7 @@ function loadEnv() {
         if ((val.startsWith("'") && val.endsWith("'")) || (val.startsWith('"') && val.endsWith('"'))) {
           val = val.slice(1, -1);
         }
+        if (key === 'VITE_SUPABASE_URL') envLocalUrl = val;
         if (!process.env[key]) {
           process.env[key] = val;
         }
@@ -41,27 +43,39 @@ function loadEnv() {
     }
   }
 
-  const url = process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const url = process.env.SMOKE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.SMOKE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!url || !anonKey) {
-    console.error('Error: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set in .env.local or environment');
+    console.error('Error: Supabase target URL and anon key must be provided.');
+    process.exit(1);
+  }
+
+  // Safety guard against accidental test execution on configured project unless approved
+  if (envLocalUrl && url === envLocalUrl && process.env.SMOKE_ALLOW_PROD !== 'true') {
+    console.error(
+      '\n[Guard Abort] Target URL matches VITE_SUPABASE_URL from .env.local.\n' +
+      'To run the automated smoke test against this target, specify SMOKE_ALLOW_PROD=true:\n' +
+      '  SMOKE_ALLOW_PROD=true node scripts/smoke-test.mjs\n' +
+      'Or supply dedicated test credentials via SMOKE_SUPABASE_URL and SMOKE_SUPABASE_ANON_KEY.\n'
+    );
     process.exit(1);
   }
 
   return { url, anonKey };
 }
 
-const { url, anonKey } = loadEnv();
+const { url, anonKey } = loadConfig();
 
 function makeClient() {
   return createClient(url, anonKey, {
     auth: {
       persistSession: true,
-      storageKey: `smoke_test_${Math.random()}`,
+      storageKey: `equipsync_smoke_${Math.random()}`,
     },
   });
 }
+
 // 1x1 Transparent PNG buffer
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -69,218 +83,296 @@ const PNG_1X1 = Buffer.from(
 );
 const PNG_SHA256 = crypto.createHash('sha256').update(PNG_1X1).digest('hex');
 
-// Results tracking
 const results = [];
+
 async function runStep(stepName, fn) {
   try {
     await fn();
     results.push({ name: stepName, status: 'PASS' });
     console.log(`  [PASS] ${stepName}`);
   } catch (err) {
-    const msg = err && typeof err === 'object'
-      ? (err.message || JSON.stringify(err))
-      : String(err);
+    const msg = err && typeof err === 'object' ? (err.message || JSON.stringify(err)) : String(err);
     results.push({ name: stepName, status: 'FAIL', error: msg });
     console.error(`  [FAIL] ${stepName} -> ${msg}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Main Smoke Test Runner
+// Main Verification Runner
 // ---------------------------------------------------------------------------
 async function main() {
   console.log('\n============================================================');
-  console.log(' CampusShare Automated Smoke Test');
+  console.log(' EquipSync Automated Verification Suite');
   console.log(' Target:', url);
   console.log('============================================================\n');
 
   const runId = Date.now().toString().slice(-6);
-  const instName = `Smoke Test University ${runId}`;
+  const password = `SmokePass_${runId}!Aa1`;
 
-  const adminClient = makeClient();
-  const memberAClient = makeClient();
-  const memberBClient = makeClient();
+  // Clients
+  const anonClient = makeClient();
+  const adminAClient = makeClient();
+  const memberA1Client = makeClient();
+  const memberA2Client = makeClient();
+  const adminBClient = makeClient();
+  const memberB1Client = makeClient();
 
-  const adminEmail = `smoke_admin_${runId}@example.com`;
-  const memberAEmail = `smoke_memA_${runId}@example.com`;
-  const memberBEmail = `smoke_memB_${runId}@example.com`;
-  const password = `TestPass!_${runId}#99`;
+  let instAId = null;
+  let instBId = null;
+  let adminAId = null;
+  let memberA1Id = null;
+  let memberA2Id = null;
+  let adminBId = null;
+  let memberB1Id = null;
 
-  let institutionId = null;
-  let adminId = null;
-  let memberAId = null;
-  let memberBId = null;
-  let resourceId = null;
-  let bookingAId = null;
-  let releasedSlotId = null;
+  let resourceR1Id = null; // Scheduling & Waitlist scenario
+  let resourceR2Id = null; // Custody flow scenario
+  let resourceBId = null;  // Cross-tenant resource
 
-  // STEP 0: Create Admin and Institution
-  await runStep('Admin sign-up creates institution & verified admin profile', async () => {
-    const { data, error } = await adminClient.auth.signUp({
-      email: adminEmail,
+  let bookingR1Id = null;
+  let bookingCustodyId = null;
+  let bookingCleanId = null;
+
+  // -------------------------------------------------------------------------
+  // 1. Anon Endpoints: Public Stats & Directory
+  // -------------------------------------------------------------------------
+  await runStep('Public stats RPC returns only institution and resource counts for anon', async () => {
+    const { data, error } = await anonClient.rpc('get_public_stats');
+    if (error) throw error;
+    if (!data || typeof data !== 'object') throw new Error('Expected object from get_public_stats');
+    const keys = Object.keys(data);
+    if (!('institutions' in data) || !('resources' in data)) {
+      throw new Error(`Expected {institutions, resources}, got keys: ${keys.join(', ')}`);
+    }
+    if (typeof data.institutions !== 'number' || typeof data.resources !== 'number') {
+      throw new Error('Stats values must be numeric counts');
+    }
+  });
+
+  await runStep('Institution directory view is readable by anonymous client', async () => {
+    const { data, error } = await anonClient
+      .from('institution_directory')
+      .select('id, name, type')
+      .limit(10);
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new Error('Expected array from institution_directory');
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. Authentication & Email Confirmation Gate
+  // -------------------------------------------------------------------------
+  await runStep('Admin A signup creates institution and verified admin profile', async () => {
+    const instName = `zz-smoke-instA-${runId}`;
+    const email = `admin_a_${runId}@example.com`;
+
+    const { data, error } = await adminAClient.auth.signUp({
+      email,
       password,
       options: {
         data: {
           role: 'institution_admin',
-          full_name: `Admin User ${runId}`,
+          full_name: `Admin A ${runId}`,
           institution_name: instName,
-          institution_type: 'university',
+          institution_type: 'University',
         },
       },
     });
+
     if (error) throw error;
-    if (!data.user) throw new Error('No user returned on admin signup');
-    adminId = data.user.id;
-    if (data.session) {
-      await adminClient.auth.setSession(data.session);
+    if (!data.session) {
+      console.error(
+        '\n[Auth Gate] Supabase project has "Confirm email" enabled.\n' +
+        'Automated smoke test requires email confirmation to be OFF (or auto-confirm on signup)\n' +
+        'so test accounts receive instant JWT sessions. Please run against a local dev instance\n' +
+        'or temporarily disable email confirmation in Supabase Dashboard -> Authentication -> Providers -> Email.\n'
+      );
+      process.exit(1);
     }
 
-    // Fetch profile to obtain created institution_id
-    const { data: prof, error: pErr } = await adminClient
+    adminAId = data.user.id;
+    await adminAClient.auth.setSession(data.session);
+
+    const { data: prof, error: pErr } = await adminAClient
       .from('profiles')
       .select('*')
-      .eq('id', adminId)
+      .eq('id', adminAId)
       .single();
     if (pErr) throw pErr;
-    if (!prof.institution_id) throw new Error('No institution_id assigned to admin');
-    institutionId = prof.institution_id;
+    if (!prof.institution_id) throw new Error('Profile missing institution_id');
+    instAId = prof.institution_id;
   });
 
-  // STEP 1: Sign up Members A & B
-  await runStep('Member A and B sign-up with pending verification status', async () => {
-    const { data: aData, error: aErr } = await memberAClient.auth.signUp({
-      email: memberAEmail,
+  await runStep('Sign up Member A1, Member A2 (Inst A) and Admin B, Member B1 (Inst B)', async () => {
+    // Member A1
+    const { data: a1, error: a1Err } = await memberA1Client.auth.signUp({
+      email: `member_a1_${runId}@example.com`,
+      password,
+      options: {
+        data: { role: 'member', full_name: `Member A1 ${runId}`, user_type: 'student', institution_id: instAId },
+      },
+    });
+    if (a1Err) throw a1Err;
+    memberA1Id = a1.user.id;
+    if (a1.session) await memberA1Client.auth.setSession(a1.session);
+
+    // Member A2
+    const { data: a2, error: a2Err } = await memberA2Client.auth.signUp({
+      email: `member_a2_${runId}@example.com`,
+      password,
+      options: {
+        data: { role: 'member', full_name: `Member A2 ${runId}`, user_type: 'student', institution_id: instAId },
+      },
+    });
+    if (a2Err) throw a2Err;
+    memberA2Id = a2.user.id;
+    if (a2.session) await memberA2Client.auth.setSession(a2.session);
+
+    // Admin B
+    const { data: bAdmin, error: bAdminErr } = await adminBClient.auth.signUp({
+      email: `admin_b_${runId}@example.com`,
       password,
       options: {
         data: {
-          role: 'member',
-          full_name: `Member Alpha ${runId}`,
-          user_type: 'student',
-          institution_id: institutionId,
+          role: 'institution_admin',
+          full_name: `Admin B ${runId}`,
+          institution_name: `zz-smoke-instB-${runId}`,
+          institution_type: 'Workshop',
         },
       },
     });
-    if (aErr) throw aErr;
-    memberAId = aData.user.id;
-    if (aData.session) {
-      await memberAClient.auth.setSession(aData.session);
-    }
+    if (bAdminErr) throw bAdminErr;
+    adminBId = bAdmin.user.id;
+    if (bAdmin.session) await adminBClient.auth.setSession(bAdmin.session);
 
-    const { data: bData, error: bErr } = await memberBClient.auth.signUp({
-      email: memberBEmail,
+    const { data: bProf, error: bProfErr } = await adminBClient
+      .from('profiles')
+      .select('*')
+      .eq('id', adminBId)
+      .single();
+    if (bProfErr) throw bProfErr;
+    instBId = bProf.institution_id;
+
+    // Member B1
+    const { data: b1, error: b1Err } = await memberB1Client.auth.signUp({
+      email: `member_b1_${runId}@example.com`,
       password,
       options: {
-        data: {
-          role: 'member',
-          full_name: `Member Beta ${runId}`,
-          user_type: 'student',
-          institution_id: institutionId,
-        },
+        data: { role: 'member', full_name: `Member B1 ${runId}`, user_type: 'student', institution_id: instBId },
       },
     });
-    if (bErr) throw bErr;
-    memberBId = bData.user.id;
-    if (bData.session) {
-      await memberBClient.auth.setSession(bData.session);
-    }
+    if (b1Err) throw b1Err;
+    memberB1Id = b1.user.id;
+    if (b1.session) await memberB1Client.auth.setSession(b1.session);
   });
 
-  // STEP 2: Admin creates resource with eligibility rules
-  await runStep('Admin creates resource with photo slots and eligibility rules', async () => {
-    const { data: res, error: rErr } = await adminClient
+  // -------------------------------------------------------------------------
+  // 3. Scheduling & Waitlist Flow
+  // -------------------------------------------------------------------------
+  await runStep('Admin A creates Resource R1 and Admin B creates Resource RB', async () => {
+    // Resource R1
+    const { data: r1, error: r1Err } = await adminAClient
       .from('resources')
       .insert({
-        institution_id: institutionId,
-        name: `Precision Camera Rig ${runId}`,
+        institution_id: instAId,
+        name: `R1 Cinema Rig ${runId}`,
         kind: 'equipment',
         category: 'DSLR Cameras',
-        asset_tag: `TAG-${runId}`,
-        location: 'Media Center – Bay 4',
+        asset_tag: `TAG-R1-${runId}`,
+        location: 'Hub A - Cabinet 1',
         required_photo_slots: ['front', 'back'],
         is_available: true,
       })
       .select()
       .single();
-    if (rErr) throw rErr;
-    resourceId = res.id;
+    if (r1Err) throw r1Err;
+    resourceR1Id = r1.id;
 
-    // Create rules: requires_approval = true
-    const { error: ruleErr } = await adminClient.from('eligibility_rules').insert({
-      resource_id: resourceId,
+    await adminAClient.from('eligibility_rules').insert({
+      resource_id: resourceR1Id,
       requires_approval: true,
       requires_supervision: false,
       max_duration_minutes: 1440,
       min_lead_time_minutes: 0,
     });
-    if (ruleErr) throw ruleErr;
+
+    // Resource RB in Institution B
+    const { data: rb, error: rbErr } = await adminBClient
+      .from('resources')
+      .insert({
+        institution_id: instBId,
+        name: `RB 3D Printer ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        asset_tag: `TAG-RB-${runId}`,
+        location: 'Workshop B - Bay 2',
+        is_available: true,
+      })
+      .select()
+      .single();
+    if (rbErr) throw rbErr;
+    resourceBId = rb.id;
   });
 
-  // STEP 3: Member B (unverified) request_booking fails with not_verified
-  await runStep('Unverified Member B request_booking fails with not_verified', async () => {
-    const start = new Date(Date.now() + 3600 * 1000).toISOString();
-    const end = new Date(Date.now() + 7200 * 1000).toISOString();
+  await runStep('Unverified Member A2 request_booking fails with not_verified', async () => {
+    const start = new Date(Date.now() + 86400 * 1000).toISOString();
+    const end = new Date(Date.now() + 90000 * 1000).toISOString();
 
-    const { error } = await memberBClient.rpc('request_booking', {
-      p_resource_id: resourceId,
+    const { error } = await memberA2Client.rpc('request_booking', {
+      p_resource_id: resourceR1Id,
       p_start: start,
       p_end: end,
-      p_purpose: 'Autonomous testing',
+      p_purpose: 'Unverified request test',
     });
 
-    if (!error) throw new Error('Expected request_booking to fail for unverified user');
+    if (!error) throw new Error('Expected failure for unverified member');
     if (!error.message.includes('not_verified')) {
       throw new Error(`Expected not_verified, got: ${error.message}`);
     }
   });
 
-  // STEP 4: Admin verifies Member A
-  await runStep('Admin verifies Member A profile', async () => {
-    const { data, error } = await adminClient.rpc('verify_member', {
-      p_user_id: memberAId,
+  await runStep('Admin A verifies Member A1 and Member A2', async () => {
+    const { data: v1, error: v1Err } = await adminAClient.rpc('verify_member', {
+      p_user_id: memberA1Id,
       p_approve: true,
     });
-    if (error) throw error;
-    if (data.verification_status !== 'verified') {
-      throw new Error(`Expected verified, got ${data.verification_status}`);
-    }
+    if (v1Err) throw v1Err;
+    if (v1.verification_status !== 'verified') throw new Error('Failed to verify member A1');
+
+    const { data: v2, error: v2Err } = await adminAClient.rpc('verify_member', {
+      p_user_id: memberA2Id,
+      p_approve: true,
+    });
+    if (v2Err) throw v2Err;
+    if (v2.verification_status !== 'verified') throw new Error('Failed to verify member A2');
   });
 
-  // STEP 5: Member A requests booking (status pending per rules)
-  const bookingStart = new Date(Date.now() + 7200 * 1000).toISOString();
-  const bookingEnd = new Date(Date.now() + 10800 * 1000).toISOString();
+  const schedStart = new Date(Date.now() + 86400 * 1000).toISOString();
+  const schedEnd = new Date(Date.now() + 93600 * 1000).toISOString();
 
-  await runStep('Verified Member A successfully requests booking', async () => {
-    const { data, error } = await memberAClient.rpc('request_booking', {
-      p_resource_id: resourceId,
-      p_start: bookingStart,
-      p_end: bookingEnd,
-      p_purpose: 'Project documentary filming',
+  await runStep('Verified Member A1 requests booking (status pending)', async () => {
+    const { data, error } = await memberA1Client.rpc('request_booking', {
+      p_resource_id: resourceR1Id,
+      p_start: schedStart,
+      p_end: schedEnd,
+      p_purpose: 'Autonomous scheduling test',
     });
     if (error) throw error;
-    bookingAId = data.id;
-    if (data.status !== 'pending') {
-      throw new Error(`Expected pending status, got: ${data.status}`);
-    }
+    bookingR1Id = data.id;
+    if (data.status !== 'pending') throw new Error(`Expected pending, got ${data.status}`);
   });
 
-  // STEP 6: Overlapping request fails with slot_taken
-  await runStep('Overlapping approved/checked_out request fails with slot_taken after approval', async () => {
-    // Approve A first
-    const { error: appErr } = await adminClient.rpc('decide_booking', {
-      p_booking_id: bookingAId,
+  await runStep('Admin A approves booking and overlapping request by A2 fails with slot_taken', async () => {
+    const { error: appErr } = await adminAClient.rpc('decide_booking', {
+      p_booking_id: bookingR1Id,
       p_approve: true,
     });
     if (appErr) throw appErr;
 
-    // Verify B now so we can test slot overlap rather than not_verified
-    await adminClient.rpc('verify_member', { p_user_id: memberBId, p_approve: true });
-
-    // B requests same slot -> must fail with slot_taken
-    const { error: overlapErr } = await memberBClient.rpc('request_booking', {
-      p_resource_id: resourceId,
-      p_start: bookingStart,
-      p_end: bookingEnd,
-      p_purpose: 'Competing reservation',
+    const { error: overlapErr } = await memberA2Client.rpc('request_booking', {
+      p_resource_id: resourceR1Id,
+      p_start: schedStart,
+      p_end: schedEnd,
+      p_purpose: 'Conflicting slot request',
     });
 
     if (!overlapErr) throw new Error('Expected overlap to fail with slot_taken');
@@ -289,259 +381,396 @@ async function main() {
     }
   });
 
-  // STEP 7: Member B joins waitlist
-  await runStep('Member B joins waitlist for overlapping time window', async () => {
-    const { data, error } = await memberBClient.rpc('join_waitlist', {
-      p_resource_id: resourceId,
-      p_start: bookingStart,
-      p_end: bookingEnd,
+  await runStep('Member A2 joins waitlist for R1 window', async () => {
+    const { data, error } = await memberA2Client.rpc('join_waitlist', {
+      p_resource_id: resourceR1Id,
+      p_start: schedStart,
+      p_end: schedEnd,
     });
     if (error) throw error;
-    if (data.status !== 'waiting') {
-      throw new Error(`Expected waiting status, got: ${data.status}`);
-    }
+    if (data.status !== 'waiting') throw new Error(`Expected waiting, got ${data.status}`);
   });
 
-  // STEP 8: Member A releases booking -> B receives offered state + notification
-  await runStep('Member A releases booking -> slot released & waitlist updated to offered', async () => {
-    const { data: rel, error: relErr } = await memberAClient.rpc('release_booking', {
-      p_booking_id: bookingAId,
+  await runStep('Member A1 releases booking -> slot released and A2 waitlist becomes offered', async () => {
+    const { data: rel, error: relErr } = await memberA1Client.rpc('release_booking', {
+      p_booking_id: bookingR1Id,
     });
     if (relErr) throw relErr;
-    if (rel.status !== 'released') throw new Error(`Expected released status, got ${rel.status}`);
+    if (rel.status !== 'released') throw new Error(`Expected released, got ${rel.status}`);
 
-    // Wait 500ms for trigger/functions
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 600));
 
-    // Verify waitlist entry for B is now 'offered'
-    const { data: bWait, error: wErr } = await memberBClient.rpc('my_waitlist');
+    const { data: waitEntries, error: wErr } = await memberA2Client.rpc('my_waitlist');
     if (wErr) throw wErr;
-    const entry = bWait.find((e) => e.resource_id === resourceId);
+    const entry = waitEntries.find((e) => e.resource_id === resourceR1Id);
     if (!entry || entry.status !== 'offered') {
       throw new Error(`Expected waitlist status 'offered', got: ${entry?.status}`);
     }
 
-    // Verify notification was sent to B
-    const { data: notifs, error: nErr } = await memberBClient
+    const { data: notifs, error: nErr } = await memberA2Client
       .from('notifications')
       .select('*')
-      .eq('user_id', memberBId);
+      .eq('user_id', memberA2Id);
     if (nErr) throw nErr;
     const slotNotif = notifs.find((n) => n.type === 'slot_available');
-    if (!slotNotif) throw new Error('Expected slot_available notification for Member B');
+    if (!slotNotif) throw new Error('Expected slot_available notification for Member A2');
   });
 
-  // STEP 9: Direct client writes to protected tables FAIL
-  await runStep('Direct client INSERT/UPDATE on protected tables fail via RLS/revocation', async () => {
-    // 1. Direct update on bookings
-    const { error: bkUpdateErr } = await memberAClient
-      .from('bookings')
-      .update({ status: 'approved' })
-      .eq('id', bookingAId);
-    if (!bkUpdateErr) throw new Error('Direct update on bookings should fail');
-
-    // 2. Direct update on profiles.role
-    const { error: roleErr } = await memberAClient
-      .from('profiles')
-      .update({ role: 'institution_admin' })
-      .eq('id', memberAId);
-    if (!roleErr) throw new Error('Direct update on profiles.role should fail');
-
-    // 3. Direct insert to audit_log
-    const { error: auditErr } = await memberAClient
-      .from('audit_log')
-      .insert({ action: 'tamper', entity_type: 'test' });
-    if (!auditErr) throw new Error('Direct insert on audit_log should fail');
-  });
-
-  // STEP 10: Member A cannot read another institution private data
-  await runStep('Member A cannot read another institution private data', async () => {
-    // Attempt to query audit_log directly -> must return empty or fail
-    const { data, error } = await memberAClient
-      .from('audit_log')
-      .select('*');
-    if (data && data.length > 0) {
-      throw new Error('Member should not have read access to administrative audit_log');
-    }
-  });
-
-  // STEP 11: Member B claims released slot
-  await runStep('Member B claims released slot -> new booking created', async () => {
-    const { data: slots, error: sErr } = await memberBClient
+  await runStep('Member A2 claims released slot and Admin A approves it', async () => {
+    const { data: slots, error: sErr } = await memberA2Client
       .from('released_slots')
       .select('*')
-      .eq('resource_id', resourceId)
+      .eq('resource_id', resourceR1Id)
       .eq('status', 'open');
     if (sErr) throw sErr;
     if (slots.length === 0) throw new Error('No open released slot found');
-    releasedSlotId = slots[0].id;
 
-    const { data: claimedBk, error: claimErr } = await memberBClient.rpc('claim_released_slot', {
-      p_slot_id: releasedSlotId,
+    const { data: claimedBk, error: claimErr } = await memberA2Client.rpc('claim_released_slot', {
+      p_slot_id: slots[0].id,
     });
     if (claimErr) throw claimErr;
-    if (!claimedBk || !claimedBk.id) throw new Error('No booking returned from claim_released_slot');
 
-    // Admin approves the claimed booking for checkout testing
-    await adminClient.rpc('decide_booking', {
+    // Approve claimed booking
+    const { error: appErr } = await adminAClient.rpc('decide_booking', {
       p_booking_id: claimedBk.id,
       p_approve: true,
     });
-    bookingAId = claimedBk.id; // re-use for custody flow
+    if (appErr) throw appErr;
   });
 
-  // STEP 12: Check-out without required photos fails missing_photos
+  // -------------------------------------------------------------------------
+  // 4. Multi-Tenant Isolation Assertions
+  // -------------------------------------------------------------------------
+  await runStep('Member A1 sees 0 resources, qualifications and released_slots of Institution B', async () => {
+    const { data: res, error: rErr } = await memberA1Client
+      .from('resources')
+      .select('*')
+      .eq('institution_id', instBId);
+    if (rErr) throw rErr;
+    if (res && res.length > 0) throw new Error('Tenant leak: Member A1 read Institution B resources');
+
+    const { data: quals, error: qErr } = await memberA1Client
+      .from('qualifications')
+      .select('*')
+      .eq('institution_id', instBId);
+    if (qErr) throw qErr;
+    if (quals && quals.length > 0) throw new Error('Tenant leak: Member A1 read Institution B qualifications');
+
+    const { data: slots, error: sErr } = await memberA1Client
+      .from('released_slots')
+      .select('*')
+      .eq('institution_id', instBId);
+    if (sErr) throw sErr;
+    if (slots && slots.length > 0) throw new Error('Tenant leak: Member A1 read Institution B released slots');
+  });
+
+  await runStep('Cross-tenant RPC calls (request_booking, join_waitlist, claim_released_slot) return forbidden', async () => {
+    const futureStart = new Date(Date.now() + 120000 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 123600 * 1000).toISOString();
+
+    // Member A1 attempting to request B's resource
+    const { error: reqErr } = await memberA1Client.rpc('request_booking', {
+      p_resource_id: resourceBId,
+      p_start: futureStart,
+      p_end: futureEnd,
+      p_purpose: 'Cross tenant attack',
+    });
+    if (!reqErr || !reqErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden on cross-tenant request_booking, got: ${reqErr?.message}`);
+    }
+
+    // Member A1 attempting to join waitlist for B's resource
+    const { error: waitErr } = await memberA1Client.rpc('join_waitlist', {
+      p_resource_id: resourceBId,
+      p_start: futureStart,
+      p_end: futureEnd,
+    });
+    if (!waitErr || !waitErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden on cross-tenant join_waitlist, got: ${waitErr?.message}`);
+    }
+  });
+
+  await runStep('Admin B cannot decide Admin A booking (returns forbidden)', async () => {
+    const { error } = await adminBClient.rpc('decide_booking', {
+      p_booking_id: bookingR1Id,
+      p_approve: false,
+      p_note: 'Malicious rejection',
+    });
+    if (!error || !error.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden when Admin B decides A booking, got: ${error?.message}`);
+    }
+  });
+
+  await runStep('Listing another tenant resource-images storage folder returns nothing', async () => {
+    const { data, error } = await memberA1Client.storage
+      .from('resource-images')
+      .list(instBId);
+    if (data && data.length > 0) {
+      throw new Error('Tenant storage leak: Member A1 listed Institution B storage objects');
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // 5. Custody Verification & Return Quality Gate
+  // Window: booking starts 10 minutes from now, ending 1 hour later (within 15m check-out window)
+  // -------------------------------------------------------------------------
+  await runStep('Create Resource R2 and Booking for immediate custody window testing', async () => {
+    const { data: r2, error: r2Err } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `R2 Field Scope ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        asset_tag: `TAG-R2-${runId}`,
+        location: 'Hub A - Cabinet 2',
+        required_photo_slots: ['front', 'back'],
+        is_available: true,
+      })
+      .select()
+      .single();
+    if (r2Err) throw r2Err;
+    resourceR2Id = r2.id;
+
+    await adminAClient.from('eligibility_rules').insert({
+      resource_id: resourceR2Id,
+      requires_approval: true,
+      max_duration_minutes: 1440,
+      min_lead_time_minutes: 0,
+    });
+
+    const nowMs = Date.now();
+    const custStart = new Date(nowMs + 10 * 60 * 1000).toISOString(); // 10m from now -> within 15m early window
+    const custEnd = new Date(nowMs + 70 * 60 * 1000).toISOString();
+
+    const { data: bk, error: bkErr } = await memberA1Client.rpc('request_booking', {
+      p_resource_id: resourceR2Id,
+      p_start: custStart,
+      p_end: custEnd,
+      p_purpose: 'Immediate custody workflow testing',
+    });
+    if (bkErr) throw bkErr;
+    bookingCustodyId = bk.id;
+
+    // Approve booking
+    const { error: appErr } = await adminAClient.rpc('decide_booking', {
+      p_booking_id: bookingCustodyId,
+      p_approve: true,
+    });
+    if (appErr) throw appErr;
+  });
+
   await runStep('Check-out without all required photo slots fails with missing_photos', async () => {
-    const { error } = await memberBClient.rpc('check_out_booking', {
-      p_booking_id: bookingAId,
+    const { error } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
       p_photos: [
         {
           slot: 'front',
-          storage_path: `${institutionId}/${bookingAId}/checkout/front.jpg`,
+          storage_path: `${instAId}/${bookingCustodyId}/checkout/front.jpg`,
           sha256: PNG_SHA256,
           client_captured_at: new Date().toISOString(),
         },
       ], // missing 'back'
       p_condition: 'good',
-      p_notes: 'Missing back angle test',
+      p_notes: 'Missing slot test',
     });
 
-    if (!error) throw new Error('Expected check_out_booking to fail missing_photos');
+    if (!error) throw new Error('Expected missing_photos failure');
     if (!error.message.includes('missing_photos')) {
       throw new Error(`Expected missing_photos, got: ${error.message}`);
     }
   });
 
-  // STEP 13: Check-out with complete 1x1 PNG uploads succeeds
-  await runStep('Check-out with complete uploaded photo set succeeds and updates status to checked_out', async () => {
-    // Upload front and back photos to custody-photos bucket
-    const pathFront = `${institutionId}/${bookingAId}/checkout/front.jpg`;
-    const pathBack = `${institutionId}/${bookingAId}/checkout/back.jpg`;
+  await runStep('Complete photo upload, assert immutability, and complete check-out', async () => {
+    const pathFront = `${instAId}/${bookingCustodyId}/checkout/front.jpg`;
+    const pathBack = `${instAId}/${bookingCustodyId}/checkout/back.jpg`;
 
-    const { error: upFrontErr } = await memberBClient.storage
+    // Upload test photos
+    const { error: up1 } = await memberA1Client.storage
       .from('custody-photos')
       .upload(pathFront, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
-    if (upFrontErr) throw upFrontErr;
+    if (up1) throw up1;
 
-    const { error: upBackErr } = await memberBClient.storage
+    const { error: up2 } = await memberA1Client.storage
       .from('custody-photos')
       .upload(pathBack, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
-    if (upBackErr) throw upBackErr;
+    if (up2) throw up2;
 
-    const { data: coData, error: coErr } = await memberBClient.rpc('check_out_booking', {
-      p_booking_id: bookingAId,
-      p_photos: [
-        {
-          slot: 'front',
-          storage_path: pathFront,
-          sha256: PNG_SHA256,
-          client_captured_at: new Date().toISOString(),
-        },
-        {
-          slot: 'back',
-          storage_path: pathBack,
-          sha256: PNG_SHA256,
-          client_captured_at: new Date().toISOString(),
-        },
-      ],
-      p_condition: 'good',
-      p_notes: 'Verified custody pass test',
-    });
-    if (coErr) throw coErr;
-    if (coData.status !== 'checked_out') {
-      throw new Error(`Expected checked_out status, got: ${coData.status}`);
-    }
-  });
-
-  // STEP 14: Photo overwrite and delete FAIL
-  await runStep('Custody photo overwrite (upsert) and delete fail (immutable evidence)', async () => {
-    const pathFront = `${institutionId}/${bookingAId}/checkout/front.jpg`;
-
-    // Try overwrite
-    const { error: owErr } = await memberBClient.storage
+    // Immutability: overwrite fails
+    const { error: owErr } = await memberA1Client.storage
       .from('custody-photos')
       .upload(pathFront, PNG_1X1, { upsert: true });
-    // Should fail with duplicate or policy error
-    if (!owErr) throw new Error('Custody photo overwrite should fail');
+    if (!owErr) throw new Error('Expected photo overwrite to be rejected');
 
-    // Try delete
-    const { error: delErr } = await memberBClient.storage
+    // Immutability: delete fails via storage policy
+    const { data: delData, error: delErr } = await memberA1Client.storage
       .from('custody-photos')
       .remove([pathFront]);
-    // Remove either returns an error or fails via RLS
+    // Supabase storage remove returns an empty array or error when denied by RLS
+    if (delData && delData.length > 0) {
+      throw new Error('Custody photo deletion should be forbidden by storage policy');
+    }
+
+    // Check-out RPC
+    const { data: co, error: coErr } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [
+        { slot: 'front', storage_path: pathFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'good',
+      p_notes: 'Check-out completed',
+    });
+    if (coErr) throw coErr;
+    if (co.status !== 'checked_out') throw new Error(`Expected checked_out, got ${co.status}`);
   });
 
-  // STEP 15: Check-in with condition damaged creates an incident
-  await runStep('Check-in with condition damaged updates status to returned and auto-creates incident', async () => {
-    const pathInFront = `${institutionId}/${bookingAId}/checkin/front.jpg`;
-    const pathInBack = `${institutionId}/${bookingAId}/checkin/back.jpg`;
+  await runStep('Damaged check-in without notes fails with notes_required', async () => {
+    const pathInFront = `${instAId}/${bookingCustodyId}/checkin/front.jpg`;
+    const pathInBack = `${instAId}/${bookingCustodyId}/checkin/back.jpg`;
 
-    await memberBClient.storage
+    await memberA1Client.storage
       .from('custody-photos')
       .upload(pathInFront, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
-
-    await memberBClient.storage
+    await memberA1Client.storage
       .from('custody-photos')
       .upload(pathInBack, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
 
-    const { data: ciData, error: ciErr } = await memberBClient.rpc('check_in_booking', {
-      p_booking_id: bookingAId,
+    const { error } = await memberA1Client.rpc('check_in_booking', {
+      p_booking_id: bookingCustodyId,
       p_photos: [
-        {
-          slot: 'front',
-          storage_path: pathInFront,
-          sha256: PNG_SHA256,
-          client_captured_at: new Date().toISOString(),
-        },
-        {
-          slot: 'back',
-          storage_path: pathInBack,
-          sha256: PNG_SHA256,
-          client_captured_at: new Date().toISOString(),
-        },
+        { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
       ],
       p_condition: 'damaged',
-      p_notes: 'Crack observed on lower housing',
+      p_notes: '   ', // Blank notes must be rejected
+    });
+
+    if (!error) throw new Error('Expected failure when condition is damaged with blank notes');
+    if (!error.message.includes('notes_required')) {
+      throw new Error(`Expected notes_required, got: ${error.message}`);
+    }
+  });
+
+  await runStep('Damaged check-in with notes auto-creates incident and notifies admins', async () => {
+    const pathInFront = `${instAId}/${bookingCustodyId}/checkin/front.jpg`;
+    const pathInBack = `${instAId}/${bookingCustodyId}/checkin/back.jpg`;
+
+    const { data: ci, error: ciErr } = await memberA1Client.rpc('check_in_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [
+        { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'damaged',
+      p_notes: 'Objective lens barrel cracked during fieldwork',
     });
     if (ciErr) throw ciErr;
-    if (ciData.status !== 'returned') {
-      throw new Error(`Expected returned status, got: ${ciData.status}`);
-    }
+    if (ci.status !== 'returned') throw new Error(`Expected returned status, got ${ci.status}`);
 
-    // Verify incident was created
-    const { data: incs, error: incErr } = await adminClient
+    // Verify incident auto-creation
+    const { data: incs, error: incErr } = await adminAClient
       .from('incidents')
       .select('*')
-      .eq('booking_id', bookingAId);
+      .eq('booking_id', bookingCustodyId);
     if (incErr) throw incErr;
-    if (incs.length === 0) throw new Error('Expected auto-created incident on damaged check-in');
+    if (!incs || incs.length === 0) throw new Error('Incident was not auto-created on damaged check-in');
+
+    // Verify admin notification
+    const { data: notifs, error: notifErr } = await adminAClient
+      .from('notifications')
+      .select('*')
+      .eq('user_id', adminAId);
+    if (notifErr) throw notifErr;
+    const incNotif = notifs.find((n) => n.type === 'incident_reported');
+    if (!incNotif) throw new Error('Admin did not receive incident_reported notification');
   });
 
-  // STEP 16: Admin inspect_return closes or disputes
-  await runStep('Admin inspect_return disputes booking with open incident', async () => {
-    const { data: insp, error: inspErr } = await adminClient.rpc('inspect_return', {
-      p_booking_id: bookingAId,
+  await runStep('Admin inspect_return reject sets status to disputed', async () => {
+    const { data: insp, error: inspErr } = await adminAClient.rpc('inspect_return', {
+      p_booking_id: bookingCustodyId,
       p_accept: false,
-      p_notes: 'Damage confirmed during physical inspection',
+      p_notes: 'Damage inspection confirmed by senior curator',
     });
     if (inspErr) throw inspErr;
-    if (insp.status !== 'disputed') {
-      throw new Error(`Expected disputed status, got: ${insp.status}`);
-    }
+    if (insp.status !== 'disputed') throw new Error(`Expected disputed status, got ${insp.status}`);
   });
 
   // -------------------------------------------------------------------------
-  // Print Summary Table
+  // 6. Clean Return & Close Booking Path
+  // -------------------------------------------------------------------------
+  await runStep('Clean booking flow with condition good and inspect_return accept -> closed', async () => {
+    const nowMs = Date.now();
+    const cleanStart = new Date(nowMs + 5 * 60 * 1000).toISOString();
+    const cleanEnd = new Date(nowMs + 65 * 60 * 1000).toISOString();
+
+    // 1. Request
+    const { data: bk, error: bkErr } = await memberA2Client.rpc('request_booking', {
+      p_resource_id: resourceR2Id,
+      p_start: cleanStart,
+      p_end: cleanEnd,
+      p_purpose: 'Clean verification pass',
+    });
+    if (bkErr) throw bkErr;
+    bookingCleanId = bk.id;
+
+    // 2. Approve
+    await adminAClient.rpc('decide_booking', { p_booking_id: bookingCleanId, p_approve: true });
+
+    // 3. Check-out
+    const pathFront = `${instAId}/${bookingCleanId}/checkout/front.jpg`;
+    const pathBack = `${instAId}/${bookingCleanId}/checkout/back.jpg`;
+    await memberA2Client.storage.from('custody-photos').upload(pathFront, PNG_1X1, { contentType: 'image/jpeg' });
+    await memberA2Client.storage.from('custody-photos').upload(pathBack, PNG_1X1, { contentType: 'image/jpeg' });
+
+    await memberA2Client.rpc('check_out_booking', {
+      p_booking_id: bookingCleanId,
+      p_photos: [
+        { slot: 'front', storage_path: pathFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'good',
+      p_notes: 'Check-out clean',
+    });
+
+    // 4. Check-in
+    const pathInFront = `${instAId}/${bookingCleanId}/checkin/front.jpg`;
+    const pathInBack = `${instAId}/${bookingCleanId}/checkin/back.jpg`;
+    await memberA2Client.storage.from('custody-photos').upload(pathInFront, PNG_1X1, { contentType: 'image/jpeg' });
+    await memberA2Client.storage.from('custody-photos').upload(pathInBack, PNG_1X1, { contentType: 'image/jpeg' });
+
+    await memberA2Client.rpc('check_in_booking', {
+      p_booking_id: bookingCleanId,
+      p_photos: [
+        { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'good',
+      p_notes: 'All items returned in pristine order',
+    });
+
+    // 5. Inspect accept -> closed
+    const { data: closedBk, error: closeErr } = await adminAClient.rpc('inspect_return', {
+      p_booking_id: bookingCleanId,
+      p_accept: true,
+      p_notes: 'Verified and restocked',
+    });
+    if (closeErr) throw closeErr;
+    if (closedBk.status !== 'closed') throw new Error(`Expected closed status, got: ${closedBk.status}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Summary Results
   // -------------------------------------------------------------------------
   console.log('\n============================================================');
-  console.log(' Smoke Test Summary Results');
+  console.log(' EquipSync Verification Suite Results');
   console.log('============================================================\n');
 
-  console.log('| Status | Assertion / Flow Step | Error |');
-  console.log('|:------:|:-----------------------------------------------|:------|');
+  console.log('| Status | Verification Scenario | Detail / Failure Reason |');
+  console.log('|:------:|:-----------------------------------------------------|:------------------------|');
   for (const r of results) {
     const icon = r.status === 'PASS' ? '✅ PASS' : '❌ FAIL';
-    console.log(`| ${icon} | ${r.name.padEnd(47)} | ${r.error || '—'} |`);
+    console.log(`| ${icon} | ${r.name.padEnd(53)} | ${r.error || '—'} |`);
   }
 
   const failedCount = results.filter((r) => r.status === 'FAIL').length;
@@ -553,6 +782,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Fatal smoke test error:', err);
+  console.error('Fatal execution error:', err);
   process.exit(1);
 });

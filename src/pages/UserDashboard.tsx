@@ -25,10 +25,42 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/providers/AuthProvider';
 import { useBookings } from '@/hooks/useBookings';
 import { useResources } from '@/hooks/useResources';
+import { listInstitutions, Institution } from '@/lib/auth';
+import { setMemberInstitution } from '@/lib/api/rpc';
+import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
+import { useEffect } from 'react';
 
 export function UserDashboard() {
-  const { user } = useAuth();
+  const { user, profile, refresh } = useAuth();
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [selectedInst, setSelectedInst] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+
+  useEffect(() => {
+    if (profile && !profile.institution_id) {
+      void listInstitutions().then((data) => {
+        if (data && data.length > 0) {
+          setInstitutions(data);
+          setSelectedInst(data[0].id ?? '');
+        }
+      });
+    }
+  }, [profile]);
+
+  const handleJoinOrg = async () => {
+    if (!selectedInst) return;
+    try {
+      setIsJoining(true);
+      await setMemberInstitution(selectedInst);
+      await refresh();
+      toast.success('Joined organisation successfully!');
+    } catch (err) {
+      toastError(err, 'Failed to join organisation');
+    } finally {
+      setIsJoining(false);
+    }
+  };
   const {
     bookings,
     activeUsage,
@@ -76,12 +108,51 @@ export function UserDashboard() {
 
   const approvedBookingsToRelease = bookings.filter((b) => b.status === 'approved');
 
+  if (profile && !profile.institution_id) {
+    return (
+      <div className="max-w-md mx-auto py-12 space-y-4">
+        <div className="surface p-8 rounded-2xl border border-border/80 text-center space-y-4 shadow-lg">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Compass className="h-6 w-6" />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-foreground">Join an Organisation</h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Your account is not yet affiliated with an equipment-sharing organisation. Select your university, workshop, or lab below to begin.
+            </p>
+          </div>
+          <div className="space-y-3 pt-2 text-left">
+            <label className="text-xs font-semibold text-foreground">Select Organisation</label>
+            <select
+              value={selectedInst}
+              onChange={(e) => setSelectedInst(e.target.value)}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
+            >
+              {institutions.map((inst) => (
+                <option key={inst.id} value={inst.id ?? ''}>
+                  {inst.name} ({inst.type})
+                </option>
+              ))}
+            </select>
+            <Button
+              disabled={isJoining || !selectedInst}
+              onClick={handleJoinOrg}
+              className="w-full font-semibold mt-2"
+            >
+              {isJoining ? 'Joining...' : 'Affiliate & Open Dashboard'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Student & Researcher Portal"
+        eyebrow="Member & Researcher Portal"
         title={`Welcome back, ${user.name.split(' ')[0]}`}
-        description="Track your current equipment passes, return due dates, and discover specialized gear across campus labs."
+        description="Track your current equipment passes, return due dates, and discover specialized gear across shared facilities."
       >
         <Link to="/app/discover">
           <Button size="sm" className="gap-2 font-semibold shadow-sm">
@@ -111,7 +182,7 @@ export function UserDashboard() {
                 Released Time Slots Available!
               </h4>
               <p className="text-xs text-muted-foreground">
-                A peer released an approved reservation. Verified campus members can claim it instantly.
+                A peer released an approved reservation. Verified organisation members can claim it instantly.
               </p>
             </div>
           </div>
@@ -157,10 +228,10 @@ export function UserDashboard() {
           change="Zero damages reported"
           changeType="positive"
           tone="info"
-          description="Lifetime loans on campus"
+          description="Lifetime equipment loans"
         />
         <StatCard
-          title="Campus Trust Score"
+          title="Member Trust Score"
           value={`${userStats.reputationScore}%`}
           icon={ShieldCheck}
           change="Top Tier Borrower"
@@ -169,7 +240,6 @@ export function UserDashboard() {
           description="Express checkout eligible"
         />
       </div>
-
       {/* Active Borrowing Highlight Card */}
       {activeBooking && (
         <div className="pt-2">
@@ -308,7 +378,7 @@ export function UserDashboard() {
               Available for Quick Reservation
             </h3>
             <p className="text-xs text-muted-foreground">
-              Equipment ready for immediate check-out across campus lockers
+              Equipment ready for immediate check-out across facilities
             </p>
           </div>
           <Link to="/app/discover">

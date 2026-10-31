@@ -13,15 +13,15 @@ export function MarketingFooter() {
                 <Share2 className="h-4 w-4" />
               </div>
               <span className="text-lg font-bold text-foreground">
-                CampusShare
+                EquipSync
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Centralized campus resource sharing and custody management platform. Reducing campus waste and unlocking collaborative potential.
+              Centralized equipment and custody management platform. Eliminating equipment downtime and unlocking collaborative potential across organisations.
             </p>
             <div className="flex items-center gap-2 pt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Phase 1 Architecture Complete</span>
+              <span>Enterprise Platform Ready</span>
             </div>
           </div>
 
@@ -38,7 +38,7 @@ export function MarketingFooter() {
               </li>
               <li>
                 <Link to="/app/user" className="hover:text-foreground transition-colors">
-                  User / Student Dashboard
+                  Member Dashboard
                 </Link>
               </li>
               <li>
@@ -83,19 +83,19 @@ export function MarketingFooter() {
               Security & Custody
             </h5>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Every equipment loan is sealed with cryptographically traceable handover codes and timestamped faculty clearance records.
+              Every equipment loan is sealed with cryptographically traceable handover codes and timestamped administrator clearance records.
             </p>
             <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Status: Mock Data Simulation Active</span>
+              <span>Status: Supabase Cloud Connected</span>
             </div>
           </div>
         </div>
 
         <div className="border-t border-border/60 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
-          <p>© {new Date().getFullYear()} CampusShare Platform. Built with modern SaaS architecture.</p>
+          <p>© {new Date().getFullYear()} EquipSync Platform. Built with modern multi-tenant architecture.</p>
           <div className="flex items-center gap-1">
-            <span>Engineered for campus collaboration</span>
+            <span>Engineered for institutional equipment sharing</span>
           </div>
         </div>
       </div>

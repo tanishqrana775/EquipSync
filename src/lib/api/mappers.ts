@@ -48,16 +48,19 @@ type DbBooking = Database['public']['Tables']['bookings']['Row'] & {
 type DbNotification = Database['public']['Tables']['notifications']['Row'];
 type DbAuditLog = Database['public']['Tables']['audit_log']['Row'];
 
-const DEFAULT_IMAGE =
-  'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=800&q=80';
-
-export function resolveStorageUrl(path: string | null | undefined, bucket = 'resource-images'): string {
-  if (!path) return DEFAULT_IMAGE;
+export function getResourceImageUrl(path: string | null | undefined): string {
+  if (!path) return '';
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
-  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-  return data?.publicUrl || DEFAULT_IMAGE;
+  const { data } = supabase.storage.from('resource-images').getPublicUrl(path);
+  return data?.publicUrl || '';
 }
 
+export function resolveStorageUrl(path: string | null | undefined, bucket = 'resource-images'): string {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data?.publicUrl || '';
+}
 export function formatTimeAgo(dateString: string): string {
   const diffMs = Date.now() - new Date(dateString).getTime();
   const minutes = Math.floor(diffMs / 60000);

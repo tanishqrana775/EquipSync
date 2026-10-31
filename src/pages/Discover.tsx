@@ -31,7 +31,7 @@ import { useResources } from '@/hooks/useResources';
 import { useBookings } from '@/hooks/useBookings';
 import { useAuth } from '@/providers/AuthProvider';
 import { Resource } from '@/lib/types';
-import { CampusShareError } from '@/lib/supabase';
+import { EquipSyncError } from '@/lib/supabase';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 
@@ -82,14 +82,6 @@ export function Discover() {
   const filteredResources = resources;
 
   const handleReserve = async (res: Resource) => {
-    if (import.meta.env.VITE_USE_MOCKS === 'true') {
-      toast.success(`Reservation submitted for ${res.title}`, {
-        description: 'Your booking has been queued for faculty review.',
-      });
-      setSelectedResource(null);
-      return;
-    }
-
     try {
       setBookingState('submitting');
       const startIso = new Date(startDate).toISOString();
@@ -113,7 +105,7 @@ export function Discover() {
         setBookingState('idle');
       }, 1200);
     } catch (err) {
-      if (err instanceof CampusShareError && err.code === 'slot_taken') {
+      if (err instanceof EquipSyncError && err.code === 'slot_taken') {
         setBookingState('slot_taken');
         toast.error('This time slot is already booked. You can join the priority waitlist.');
       } else {
@@ -327,42 +319,71 @@ export function Discover() {
                       const date = formData.get('date') as string;
                       const startTime = formData.get('startTime') as string;
                       const endTime = formData.get('endTime') as string;
+                      const purposeVal = (formData.get('purpose') as string) || 'Academic research & project work';
+                      const supervisorVal = (formData.get('supervisorName') as string) || undefined;
 
                       if (!date || !startTime || !endTime) {
                         toast.error('Please fill in all fields');
                         return;
                       }
 
-                      if (endTime <= startTime) {
+                      const startDateObj = new Date(`${date}T${startTime}`);
+                      const endDateObj = new Date(`${date}T${endTime}`);
+
+                      // Handle overnight reservation ranges
+                      if (endDateObj <= startDateObj) {
+                        endDateObj.setDate(endDateObj.getDate() + 1);
+                      }
+
+                      if (startDateObj < new Date()) {
                         toast.error('Invalid time selection', {
-                          description: 'End time must be later than start time.',
+                          description: 'Start time cannot be in the past.',
                         });
                         return;
                       }
 
-                      // Convert UI form times into Backend timestamps
-                      const startTimestamp = new Date(`${date}T${startTime}`).toISOString();
-                      const endTimestamp = new Date(`${date}T${endTime}`).toISOString();
+                      // Convert UI form times into ISO timestamps in user's LOCAL timezone
+                      const startTimestamp = startDateObj.toISOString();
+                      const endTimestamp = endDateObj.toISOString();
 
                       try {
-                        // Call your real TanStack Query backend mutation
-                        await (requestBooking as any).mutateAsync({
+                        const newBk = await requestBooking({
                           resourceId: selectedResource.id,
-                          startTime: startTimestamp,
-                          endTime: endTimestamp
+                          start: startTimestamp,
+                          end: endTimestamp,
+                          purpose: purposeVal,
+                          supervisorName: supervisorVal,
                         });
                         
-                        toast.success('Reservation Request Submitted!', {
-                          description: `Your request for "${selectedResource.title}" has been submitted for faculty review.`,
-                        });
+                        toast.success(
+                          newBk.status === 'approved'
+                            ? 'Reservation Approved! Ready for pickup.'
+                            : 'Reservation request submitted for faculty review.'
+                        );
                         setSelectedResource(null);
-                      } catch (error: any) {
-                        toast.error('Failed to reserve resource', { 
-                          description: error.message || 'An error occurred' 
-                        });
+                      } catch (error: unknown) {
+                        const isSlotTaken =
+                          (error instanceof EquipSyncError && error.code === 'slot_taken') ||
+                          (error instanceof Error && error.message.includes('slot_taken'));
+                        if (isSlotTaken) {
+                          toast.error('This time slot is already booked', {
+                            action: {
+                              label: 'Join Waitlist',
+                              onClick: () => {
+                                void joinWaitlist({
+                                  resourceId: selectedResource.id,
+                                  start: startTimestamp,
+                                  end: endTimestamp,
+                                });
+                                setSelectedResource(null);
+                              },
+                            },
+                          });
+                        } else {
+                          toastError(error, 'Failed to reserve resource');
+                        }
                       }
-                    }}
-                  >
+                    }}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="text-xs font-semibold text-foreground block mb-1.5">Reservation Date</label>
@@ -398,19 +419,44 @@ export function Discover() {
                           defaultValue="17:00"
                         />
                       </div>
-                      {/* Note: Units left as UI element; ignored by backend unless added to schema later */}
-                      <div className={selectedResource.availableQuantity ? "block" : "hidden"}>
-                        <label className="text-xs font-semibold text-foreground block mb-1.5">Units Requested</label>
+                    </div>
+
+                    {selectedResource.requiresFacultyApproval && (
+                      <div>
+                        <label className="text-xs font-semibold text-foreground block mb-1.5">
+                          Supervisor Name (Required)
+                        </label>
                         <Input
-                          type="number"
-                          name="units"
-                          min="1"
-                          max={selectedResource.availableQuantity || 1}
-                          value={requestedUnits}
-                          onChange={(e) => setRequestedUnits(Math.max(1, parseInt(e.target.value) || 1))}
+                          name="supervisorName"
+                          placeholder="e.g. Dr. Aris Thorne"
+                          required
                           className="w-full text-sm h-10 px-3"
                         />
                       </div>
+                    )}
+
+                    <div>
+                      <label className="text-xs font-semibold text-foreground block mb-1.5">Purpose / Coursework</label>
+                      <Input
+                        name="purpose"
+                        placeholder="Academic coursework, project or research"
+                        defaultValue="Academic research & project work"
+                        className="w-full text-sm h-10 px-3"
+                      />
+                    </div>
+
+                    {/* Note: Units left as UI element; ignored by backend unless added to schema later */}
+                    <div className={selectedResource.availableQuantity ? "block" : "hidden"}>
+                      <label className="text-xs font-semibold text-foreground block mb-1.5">Units Requested</label>
+                      <Input
+                        type="number"
+                        name="units"
+                        min="1"
+                        max={selectedResource.availableQuantity || 1}
+                        value={requestedUnits}
+                        onChange={(e) => setRequestedUnits(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full text-sm h-10 px-3"
+                      />
                     </div>
 
                     <div className="flex items-center justify-end gap-3 pt-3">
@@ -426,10 +472,9 @@ export function Discover() {
                         type="submit" 
                         size="default" 
                         className="gap-2 font-semibold px-5"
-                        disabled={(requestBooking as any)?.isPending}
                       >
                         <Calendar className="h-4 w-4" />
-                        <span>{(requestBooking as any)?.isPending ? 'Submitting...' : 'Submit Reservation Request'}</span>
+                        <span>Submit Reservation Request</span>
                       </Button>
                     </div>
                   </form>

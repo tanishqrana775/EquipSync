@@ -1,7 +1,6 @@
 import { Search, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { RoleSwitcher } from './RoleSwitcher';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationsPopover } from './NotificationsPopover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -20,8 +19,7 @@ interface TopbarProps {
 }
 
 export function Topbar({ onSearchClick }: TopbarProps) {
-  const { user, role } = useAuth();
-
+  const { user, role, signOut } = useAuth();
   return (
     <header className="sticky top-0 z-20 flex h-16 w-full items-center justify-between border-b border-border/80 bg-background/85 px-4 md:px-6 backdrop-blur-md transition-all">
       <div className="flex items-center gap-3">
@@ -41,9 +39,6 @@ export function Topbar({ onSearchClick }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-2 md:gap-3">
-        {/* Demo Role Switcher */}
-        <RoleSwitcher />
-
         {/* Notifications */}
         <NotificationsPopover />
 
@@ -92,15 +87,18 @@ export function Topbar({ onSearchClick }: TopbarProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="cursor-pointer text-xs">
-              Campus Department:
+              Organisation / Unit:
               <span className="font-semibold ml-1 truncate">{user.department}</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer text-xs">
               Joined: <span className="font-semibold ml-1">{user.joinedDate}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => signOut()} className="cursor-pointer text-xs text-destructive font-semibold">
+              Sign Out
+            </DropdownMenuItem>
             <DropdownMenuItem className="text-xs text-muted-foreground">
-              CampusShare Phase 1 Build • v0.1.0
+              EquipSync Platform • v0.1.0
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

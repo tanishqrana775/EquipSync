@@ -5,11 +5,13 @@ import { Register } from '@/pages/Register';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { MyBookings } from '@/pages/MyBookings';
 import { DisputeResolution } from '@/pages/DisputeResolution';
+import { OrganizationSettings } from '@/pages/OrganizationSettings';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
 import { UserDashboard } from '@/pages/UserDashboard';
 import { ResourceManagement } from '@/pages/ResourceManagement';
 import { Discover } from '@/pages/Discover';
 import { BookingCustody } from '@/pages/BookingCustody';
+import { ChainOfCustody } from '@/pages/ChainOfCustody';
 import { AppShell } from '@/components/layout/AppShell';
 import { AuthLayout } from '@/components/layout/AuthLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -70,15 +72,17 @@ export function App() {
           <Route path="institution" element={<InstitutionDashboard />} />
           <Route path="institution/resources" element={<ResourceManagement />} />
           <Route path="institution/disputes" element={<DisputeResolution />} />
+          <Route path="institution/settings" element={<OrganizationSettings />} />
           <Route path="user" element={<UserDashboard />} />
           <Route path="discover" element={<Discover />} />
           <Route path="bookings" element={<MyBookings />} />
+          <Route path="custody" element={<ChainOfCustody />} />
           <Route path="bookings/:id" element={<BookingCustody />} />
           {/* Legacy path redirects within /app */}
+          <Route path="bookings/bk-2024-001" element={<Navigate to="/app/custody" replace />} />
           <Route path="dashboard" element={<AppRedirect />} />
           <Route path="my-bookings" element={<Navigate to="/app/bookings" replace />} />
           <Route path="catalog" element={<Navigate to="/app/discover" replace />} />
-          {/* Nested /app catch-all: redirects to user dashboard, never to "/" */}
           <Route path="*" element={<AppRedirect />} />
         </Route>
 

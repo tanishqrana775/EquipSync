@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Copy,
   AlertTriangle,
+  AlertCircle,
   X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -92,13 +93,30 @@ export function BookingCustody() {
     return map;
   }, [returnEvent]);
 
-  if (loading || !custody) {
+  if (loading) {
     return (
-      <div className="surface p-12 text-center rounded-2xl">
-        <Clock className="h-8 w-8 text-primary animate-spin mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">
-          Loading chain of custody cryptographic verification record...
-        </p>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-20 bg-muted/40 rounded-2xl" />
+        <div className="h-64 bg-muted/30 rounded-2xl" />
+      </div>
+    );
+  }
+
+  if (!booking || !custody) {
+    return (
+      <div className="surface p-12 text-center rounded-2xl space-y-4">
+        <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto" />
+        <div className="space-y-1">
+          <h3 className="text-lg font-bold text-foreground">Reservation Not Found</h3>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            This reservation could not be found or you do not have permission to view its custody record.
+          </p>
+        </div>
+        <Link to="/app/custody">
+          <Button variant="outline" size="sm">
+            Go to Chain of Custody Hub
+          </Button>
+        </Link>
       </div>
     );
   }

@@ -287,8 +287,16 @@ test.describe('Workspace Navigation, Tools & Custody Gates', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).toContain('/app/bookings');
     expect(page.url()).not.toBe('http://localhost:3000/');
+    // 2. Click Chain of Custody
+    await openDrawer();
+    const custodyLink = page.getByRole('link', { name: /Chain of Custody/i });
+    await expect(custodyLink).toBeVisible();
+    await custodyLink.click();
+    await page.waitForLoadState('domcontentloaded');
+    expect(page.url()).toContain('/app/custody');
+    expect(page.url()).not.toBe('http://localhost:3000/');
 
-    // 2. Click Discover & Reserve
+    // 3. Click Discover & Reserve
     await openDrawer();
     const discoverLink = page.getByRole('link', { name: /Discover & Reserve/i });
     await expect(discoverLink).toBeVisible();

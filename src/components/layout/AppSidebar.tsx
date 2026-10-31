@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   CheckCircle2,
   HelpCircle,
+  Globe,
 } from 'lucide-react';
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
@@ -76,7 +77,7 @@ export function AppSidebar() {
   const navItems: NavItemDef[] = isInstitution
     ? [
         {
-          label: 'Organisation Overview',
+          label: 'Organization Overview',
           to: '/app/institution',
           icon: LayoutDashboard,
         },
@@ -92,7 +93,7 @@ export function AppSidebar() {
         },
         {
           label: 'Chain of Custody',
-          to: '/app/bookings/bk-2024-001',
+          to: '/app/custody',
           icon: FileCheck2,
           badge: 'Audit',
         },
@@ -113,6 +114,11 @@ export function AppSidebar() {
           label: 'My Bookings',
           to: '/app/bookings',
           icon: FileCheck2,
+        },
+        {
+          label: 'Chain of Custody',
+          to: '/app/custody',
+          icon: ShieldCheck,
         },
         {
           label: 'Discover & Reserve',
@@ -179,7 +185,9 @@ export function AppSidebar() {
                 <GraduationCap className="h-4 w-4 shrink-0 text-current" />
               )}
               {!isCollapsed && (
-                <span className="capitalize font-semibold truncate min-w-0">{role} Workspace</span>
+                <span className="capitalize font-semibold truncate min-w-0">
+                  {role === 'institution' ? 'Organization' : 'Member'} Workspace
+                </span>
               )}
             </div>
             {!isCollapsed && <LiveBadge className="ml-2 shrink-0" />}
@@ -306,6 +314,29 @@ export function AppSidebar() {
                       Account Settings
                     </TooltipContent>
                   </Tooltip>
+
+                  {isInstitution && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <NavLink
+                          to="/app/institution/settings"
+                          onClick={handleNavClick}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex h-10 w-10 mx-auto items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground transition-colors',
+                              isActive && 'bg-primary text-primary-foreground shadow-xs'
+                            )
+                          }
+                        >
+                          <Globe className="h-4 w-4 text-current" />
+                          <span className="sr-only">Organization settings</span>
+                        </NavLink>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" className="font-semibold text-xs">
+                        Organization settings
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </>
               ) : (
                 <>
@@ -325,6 +356,22 @@ export function AppSidebar() {
                     <Settings className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span>Account Settings</span>
                   </button>
+
+                  {isInstitution && (
+                    <NavLink
+                      to="/app/institution/settings"
+                      onClick={handleNavClick}
+                      className={({ isActive }) =>
+                        cn(
+                          'w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors font-medium text-left',
+                          isActive && 'bg-primary text-primary-foreground shadow-xs font-semibold'
+                        )
+                      }
+                    >
+                      <Globe className="h-4 w-4 text-current shrink-0" />
+                      <span>Organization settings</span>
+                    </NavLink>
+                  )}
                 </>
               )}
             </nav>
@@ -401,10 +448,10 @@ export function AppSidebar() {
 
             <div className="space-y-1 pt-3">
               <h4 className="font-bold flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                <HelpCircle className="h-4 w-4" /> Contact your organisation administrator
+                <HelpCircle className="h-4 w-4" /> Contact your organization administrator
               </h4>
               <p className="text-muted-foreground leading-relaxed pl-5">
-                Need induction safety qualifications, special equipment supervision, or account verification? Please contact your organisation's facility administrator directly.
+                Need induction safety qualifications, special equipment supervision, or account verification? Please contact your organization's facility administrator directly.
               </p>
             </div>
           </div>
@@ -445,23 +492,31 @@ export function AppSidebar() {
             <div className="flex justify-between items-center py-1 border-b border-border/50">
               <span className="text-muted-foreground">Role</span>
               <span className="font-semibold text-foreground capitalize">
-                {role === 'institution' ? 'Organisation Administrator' : 'Member'}
+                {role === 'institution' ? 'Organization Administrator' : 'Member'}
               </span>
             </div>
             <div className="flex justify-between items-center py-1 border-b border-border/50">
-              <span className="text-muted-foreground">Organisation</span>
+              <span className="text-muted-foreground">Organization</span>
               <span className="font-semibold text-foreground">
                 {institutionName || user.department || 'Not affiliated'}
               </span>
             </div>
             <div className="flex justify-between items-center py-1">
               <span className="text-muted-foreground">Verification Status</span>
-              <Badge
-                variant={isVerified ? 'default' : 'secondary'}
-                className="text-[10px] font-bold"
-              >
-                {isVerified ? 'Verified' : 'Pending Verification'}
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                <Badge
+                  variant={isVerified ? 'default' : user.verificationStatus === 'rejected' ? 'destructive' : 'secondary'}
+                  className="text-[10px] font-bold"
+                >
+                  {isVerified
+                    ? user.verificationMethod === 'domain'
+                      ? 'Verified (Domain)'
+                      : 'Verified'
+                    : user.verificationStatus === 'rejected'
+                    ? 'Declined'
+                    : 'Pending Verification'}
+                </Badge>
+              </div>
             </div>
           </div>
 

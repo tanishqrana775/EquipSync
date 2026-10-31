@@ -245,7 +245,7 @@ export function PasswordRecoveryWizard({
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@organisation.edu"
+                    placeholder="name@organization.edu"
                     className="pl-9 text-sm"
                     autoFocus
                     required

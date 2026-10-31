@@ -30,7 +30,7 @@ export function BentoGrid() {
             Architecture Highlights
           </p>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight">
-            Engineered for institutional accountability
+            Engineered for organization accountability
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
             Every feature is purpose-built to eliminate equipment hoarding, resolve damage disputes before they start, and keep department data strictly isolated.
@@ -142,9 +142,9 @@ export function BentoGrid() {
             <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
               <Lock className="h-5 w-5" />
             </div>
-            <h3 className="text-base font-bold text-foreground">Your Organisation's Data Stays Yours</h3>
+            <h3 className="text-base font-bold text-foreground">Your Organization's Data Stays Yours</h3>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Strict multi-tenant architecture enforced by PostgreSQL Row-Level Security. Cross-tenant queries return zero rows, and private storage folders cannot be listed across organisations.
+              Strict multi-tenant architecture enforced by PostgreSQL Row-Level Security. Cross-tenant queries return zero rows, and private storage folders cannot be listed across organizations.
             </p>
           </div>
 

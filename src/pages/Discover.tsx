@@ -4,6 +4,8 @@ import {
   Filter,
   Calendar,
   ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
   CheckCircle2,
   Clock,
   Sparkles,
@@ -65,7 +67,7 @@ export function Discover() {
   });
 
   const { requestBooking, joinWaitlist } = useBookings();
-  const { isVerified, verifiedQualificationIds } = useAuth();
+  const { isVerified, verifiedQualificationIds, user, role } = useAuth();
 
   const filteredResources = useMemo(() => {
     return resources.filter((r) => r.status !== 'retired');
@@ -140,6 +142,32 @@ export function Discover() {
         title="Equipment Catalog"
         description="Search and reserve computing gear, studio cameras, precision lab instruments, and study spaces across organization facilities."
       />
+
+      {/* Pending / Rejected Member Alert Banner */}
+      {!isVerified && role === 'user' && (
+        <div
+          role="alert"
+          className={`p-4 rounded-2xl border text-xs flex items-start gap-3 animate-fade-in ${
+            user?.verificationStatus === 'rejected'
+              ? 'bg-destructive/10 border-destructive/30 text-destructive'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold block text-sm">
+              {user?.verificationStatus === 'rejected'
+                ? 'Verification Declined'
+                : 'Account Verification Pending'}
+            </span>
+            <p className="leading-relaxed">
+              {user?.verificationStatus === 'rejected'
+                ? "Your verification was declined. Contact your organization's admin."
+                : "Your account is pending verification by your organization's admin. You can browse, but reservations are disabled until you're verified."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Discovery Filter Controls */}
       <div className="surface p-4 rounded-2xl space-y-3.5">
@@ -298,7 +326,29 @@ export function Discover() {
                   <StatusBadge status={selectedResource.status} />
                 </div>
 
-                {selectedResource.status !== 'available' ? (
+                {!isVerified && role === 'user' ? (
+                  <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-center space-y-3">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                      <ShieldAlert className="h-6 w-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-foreground">Verification Required</h4>
+                      <p className="text-xs text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                        {user?.verificationStatus === 'rejected'
+                          ? "Your verification was declined. Contact your organization's admin."
+                          : "Your account is pending verification by your organization's admin. You can browse, but reservations are disabled until you're verified."}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedResource(null)}
+                      className="text-xs"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                ) : selectedResource.status !== 'available' ? (
                   <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2.5">
                     <Info className="h-5 w-5 shrink-0" />
                     <span>

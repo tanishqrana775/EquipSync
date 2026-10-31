@@ -14,6 +14,7 @@ import {
   ListOrdered,
   X,
   Zap,
+  AlertTriangle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatCard } from '@/components/shared/StatCard';
@@ -34,7 +35,7 @@ import { useEffect } from 'react';
 import { InstitutionSearchAutocomplete } from '@/components/shared/InstitutionSearchAutocomplete';
 
 export function UserDashboard() {
-  const { user, profile, refresh } = useAuth();
+  const { user, profile, isVerified, refresh } = useAuth();
   const [selectedInstObj, setSelectedInstObj] = useState<Institution | null>(null);
   const [isJoining, setIsJoining] = useState(false);
 
@@ -44,9 +45,9 @@ export function UserDashboard() {
       setIsJoining(true);
       await setMemberInstitution(selectedInstObj.id);
       await refresh();
-      toast.success('Joined organisation successfully!');
+      toast.success('Joined organization successfully!');
     } catch (err) {
-      toastError(err, 'Failed to join organisation');
+      toastError(err, 'Failed to join organization');
     } finally {
       setIsJoining(false);
     }
@@ -106,13 +107,13 @@ export function UserDashboard() {
             <Compass className="h-6 w-6" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-bold text-foreground">Join an Organisation</h2>
+            <h2 className="text-xl font-bold text-foreground">Join an Organization</h2>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Your account is not yet affiliated with an equipment-sharing organisation. Select your university, workshop, or lab below to begin.
+              Your account is not yet affiliated with an equipment-sharing organization. Select your university, workshop, or lab below to begin.
             </p>
           </div>
           <div className="space-y-3 pt-2 text-left">
-            <label className="text-xs font-semibold text-foreground">Select Organisation</label>
+            <label className="text-xs font-semibold text-foreground">Select Organization</label>
             <InstitutionSearchAutocomplete
               selectedInstitution={selectedInstObj}
               onSelect={(inst) => setSelectedInstObj(inst)}
@@ -153,6 +154,32 @@ export function UserDashboard() {
         )}
       </PageHeader>
 
+      {/* Pending / Rejected Member Alert Banner */}
+      {!isVerified && (
+        <div
+          role="alert"
+          className={`p-4 rounded-2xl border text-xs flex items-start gap-3 animate-fade-in ${
+            user?.verificationStatus === 'rejected'
+              ? 'bg-destructive/10 border-destructive/30 text-destructive'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold block text-sm">
+              {user?.verificationStatus === 'rejected'
+                ? 'Verification Declined'
+                : 'Account Verification Pending'}
+            </span>
+            <p className="leading-relaxed">
+              {user?.verificationStatus === 'rejected'
+                ? "Your verification was declined. Contact your organization's admin."
+                : "Your account is pending verification by your organization's admin. You can browse, but reservations are disabled until you're verified."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Released Slots Announcement Banner */}
       {releasedSlots.length > 0 && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/15 to-primary/15 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
@@ -165,7 +192,7 @@ export function UserDashboard() {
                 Released Time Slots Available!
               </h4>
               <p className="text-xs text-muted-foreground">
-                A peer released an approved reservation. Verified organisation members can claim it instantly.
+                A peer released an approved reservation. Verified organization members can claim it instantly.
               </p>
             </div>
           </div>

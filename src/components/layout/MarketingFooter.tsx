@@ -17,7 +17,7 @@ export function MarketingFooter() {
               </span>
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Centralized equipment and custody management platform. Eliminating equipment downtime and unlocking collaborative potential across organisations.
+            Centralized equipment and custody management platform. Eliminating equipment downtime and unlocking collaborative potential across organizations.
             </p>
             <div className="flex items-center gap-2 pt-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
               <Sparkles className="h-3.5 w-3.5" />
@@ -33,7 +33,7 @@ export function MarketingFooter() {
             <ul className="space-y-2 text-xs text-muted-foreground">
               <li>
                 <Link to="/app/institution" className="hover:text-foreground transition-colors">
-                  Institution Dashboard
+                  Organization Dashboard
                 </Link>
               </li>
               <li>
@@ -95,7 +95,7 @@ export function MarketingFooter() {
         <div className="border-t border-border/60 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <p>© {new Date().getFullYear()} EquipSync Platform. Built with modern multi-tenant architecture.</p>
           <div className="flex items-center gap-1">
-            <span>Engineered for institutional equipment sharing</span>
+            <span>Engineered for organization equipment sharing</span>
           </div>
         </div>
       </div>

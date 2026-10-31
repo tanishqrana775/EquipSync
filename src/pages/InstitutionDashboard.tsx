@@ -17,10 +17,11 @@ import { ActivityTimeline } from '@/components/shared/ActivityTimeline';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LiveBadge } from '@/components/shared/LiveBadge';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useResources } from '@/hooks/useResources';
 import { useBookings } from '@/hooks/useBookings';
 import { useInstitutionStats } from '@/hooks/useInstitutionStats';
-import { Check, X, UserCheck, Scale } from 'lucide-react';
+import { Check, X, UserCheck, Scale, Users } from 'lucide-react';
 export function InstitutionDashboard() {
   const { resources, loading: resourcesLoading } = useResources();
   const { bookings, loading: bookingsLoading, decideBooking } = useBookings({ institutionWide: true });
@@ -29,8 +30,8 @@ export function InstitutionDashboard() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Administrative Overview"
-        title="Organisation Management"
-        description="Monitor asset circulation, verify custody passes, and evaluate equipment utilisation."
+        title="Organization Management"
+        description="Monitor asset circulation, verify custody passes, and evaluate equipment utilization."
       >
         <Link to="/app/institution/resources">
           <Button size="sm" className="gap-2 font-semibold shadow-sm">
@@ -137,7 +138,7 @@ export function InstitutionDashboard() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => decideBooking({ bookingId: bk.id, approve: false, note: 'Rejected by faculty' })}
+                        onClick={() => decideBooking({ bookingId: bk.id, approve: false, note: 'Declined by administrator' })}
                         className="h-8 text-xs text-destructive hover:bg-destructive/10 px-2"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -164,6 +165,71 @@ export function InstitutionDashboard() {
             ))}
           </div>
         </div>
+
+        {/* Pending Member Verification Queue */}
+        {pendingMembers.length > 0 && (
+          <div className="surface p-5 rounded-2xl border border-border/80 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <h3 className="text-base font-bold text-foreground">
+                  Member Verification Queue ({pendingMembers.length})
+                </h3>
+              </div>
+              <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-700 dark:text-amber-300">
+                Action Required
+              </Badge>
+            </div>
+
+            <div className="space-y-2.5">
+              {pendingMembers.map((m) => (
+                <div
+                  key={m.id}
+                  className="p-3.5 rounded-xl border border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {m.full_name || 'Member'}
+                      </span>
+                      {m.verification_method === 'domain' && (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          Verified automatically
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px] capitalize">
+                        {m.user_type || 'member'}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Member ID: {m.id.slice(0, 8).toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => verifyMember(m.id, false)}
+                      className="h-8 text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      <span>Decline</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => verifyMember(m.id, true)}
+                      className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      <span>Verify Member</span>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Live Custody Timeline & Quick Auditing */}
         <div className="space-y-4">

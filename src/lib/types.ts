@@ -10,6 +10,8 @@ export interface User {
   avatar: string;
   rating?: number;
   isVerified: boolean;
+  verificationStatus?: 'pending' | 'verified' | 'rejected';
+  verificationMethod?: 'admin' | 'domain' | null;
   joinedDate: string;
   phone?: string;
 }

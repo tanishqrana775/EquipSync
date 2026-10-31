@@ -20,7 +20,8 @@ export function makeFakeJwt(payload: Record<string, unknown>): string {
 export async function mockAuthenticatedSession(
   page: Page,
   role: 'institution_admin' | 'member' = 'member',
-  institutionName = 'Stanford Equipment Hub'
+  institutionName = 'Stanford Equipment Hub',
+  verificationStatus: 'verified' | 'pending' | 'rejected' = 'verified'
 ) {
   const userId = role === 'institution_admin' ? 'admin-uuid-1234' : 'member-uuid-5678';
   const instId = 'inst-uuid-9999';
@@ -59,7 +60,7 @@ export async function mockAuthenticatedSession(
           full_name: role === 'institution_admin' ? 'E2E Administrator' : 'E2E Member',
           role,
           user_type: role === 'institution_admin' ? 'staff' : 'student',
-          verification_status: 'verified',
+          verification_status: verificationStatus,
           avatar_url: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),

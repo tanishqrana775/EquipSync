@@ -187,7 +187,7 @@ export function useBookings(filters?: BookingFilters) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['bookings'] });
       void queryClient.invalidateQueries({ queryKey: ['released_slots'] });
-      toast.success('Slot released to organisation members');
+      toast.success('Slot released to organization members');
     },
     onError: (err) => {
       toastError(err, 'Failed to release booking slot');

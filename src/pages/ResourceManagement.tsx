@@ -550,7 +550,7 @@ export function ResourceManagement() {
               Register Resource
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Asset will be catalogued and made visible to eligible organisation members.
+              Asset will be catalogued and made visible to eligible organization members.
             </DialogDescription>
           </DialogHeader>
 
@@ -614,7 +614,7 @@ export function ResourceManagement() {
                         </CommandGroup>
 
                         {customCategoriesList.length > 0 && (
-                          <CommandGroup heading="Organisation Categories">
+                          <CommandGroup heading="Organization Categories">
                             {customCategoriesList.map((cat) => (
                               <CommandItem
                                 key={cat}

@@ -76,7 +76,7 @@ export function AppShell() {
                 className="cursor-pointer gap-2"
               >
                 <Building2 className="h-4 w-4 text-primary" />
-                <span>Institution Dashboard</span>
+                <span>Organization Dashboard</span>
               </CommandItem>
               <CommandItem
                 onSelect={() => handleSelectRoute('/app/user')}

@@ -1,6 +1,6 @@
 /**
  * src/components/shared/InstitutionSearchAutocomplete.tsx
- * EquipSync – Live search suggestion input for organisations/institutions.
+ * EquipSync – Live search suggestion input for organizations/institutions.
  * Includes 250ms debounce, keyboard navigation, and selection validation.
  */
 
@@ -139,7 +139,7 @@ export function InstitutionSearchAutocomplete({
             if (suggestions.length > 0) setIsOpen(true);
           }}
           onKeyDown={handleKeyDown}
-          aria-label="Organisation Name Search"
+          aria-label="Organization Name Search"
           aria-autocomplete="list"
           aria-expanded={isOpen}
           aria-invalid={!!error || isInvalid}
@@ -161,14 +161,14 @@ export function InstitutionSearchAutocomplete({
 
       {/* Helper text */}
       <p className="text-[11px] text-muted-foreground leading-tight">
-        Choose your organisation from the list. Can't find it? Ask your admin to register it first.
+        Choose your organization from the list. Can't find it? Ask your admin to register it first.
       </p>
 
       {/* Inline Selection Validation Error */}
       {(error || (isInvalid && !isOpen)) && (
         <div className="flex items-center gap-1 text-[11px] text-destructive font-medium pt-0.5">
           <AlertCircle className="h-3 w-3 shrink-0" />
-          <span>{error || 'Please select an organisation from the suggestions list.'}</span>
+          <span>{error || 'Please select an organization from the suggestions list.'}</span>
         </div>
       )}
 
@@ -180,7 +180,7 @@ export function InstitutionSearchAutocomplete({
         >
           {suggestions.length === 0 && query.trim().length >= 3 && !isLoading ? (
             <div className="p-3 text-center text-muted-foreground text-[11px]">
-              No organisation found matching "{query}"
+              No organization found matching "{query}"
             </div>
           ) : (
             suggestions.map((inst, index) => {

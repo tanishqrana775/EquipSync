@@ -146,7 +146,7 @@ export function DisputeResolution() {
           icon={ShieldCheck}
           title="No active custody disputes"
           description="All equipment handovers and returns have been verified clean or already resolved."
-          actionLabel="View Organisation Resources"
+          actionLabel="View Organization Resources"
           onAction={() => window.location.href = '/app/institution/resources'}
         />
       ) : (

@@ -14,6 +14,67 @@ export type Database = {
   }
   public: {
     Tables: {
+      asset_audits: {
+        Row: {
+          accessory_checks: Json
+          condition: Database["public"]["Enums"]["condition_rating"]
+          created_at: string
+          flagged: boolean
+          id: string
+          institution_id: string
+          notes: string | null
+          performed_by: string
+          photos: Json
+          resource_id: string
+        }
+        Insert: {
+          accessory_checks?: Json
+          condition: Database["public"]["Enums"]["condition_rating"]
+          created_at?: string
+          flagged?: boolean
+          id?: string
+          institution_id: string
+          notes?: string | null
+          performed_by: string
+          photos?: Json
+          resource_id: string
+        }
+        Update: {
+          accessory_checks?: Json
+          condition?: Database["public"]["Enums"]["condition_rating"]
+          created_at?: string
+          flagged?: boolean
+          id?: string
+          institution_id?: string
+          notes?: string | null
+          performed_by?: string
+          photos?: Json
+          resource_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_audits_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_audits_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_audits_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -429,6 +490,7 @@ export type Database = {
       institutions: {
         Row: {
           address: string | null
+          allowed_domains: string[]
           created_at: string
           created_by: string | null
           email_domain: string | null
@@ -439,6 +501,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          allowed_domains?: string[]
           created_at?: string
           created_by?: string | null
           email_domain?: string | null
@@ -449,6 +512,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          allowed_domains?: string[]
           created_at?: string
           created_by?: string | null
           email_domain?: string | null
@@ -510,7 +574,9 @@ export type Database = {
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
           user_type: Database["public"]["Enums"]["user_type"] | null
+          verification_method: 'admin' | 'domain' | null
           verification_status: Database["public"]["Enums"]["verification_status"]
+          verified_at: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -521,7 +587,9 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
           user_type?: Database["public"]["Enums"]["user_type"] | null
+          verification_method?: 'admin' | 'domain' | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
+          verified_at?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -532,7 +600,9 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
           user_type?: Database["public"]["Enums"]["user_type"] | null
+          verification_method?: 'admin' | 'domain' | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
+          verified_at?: string | null
         }
         Relationships: [
           {
@@ -1314,6 +1384,80 @@ export type Database = {
           p_resource_id: string
         }
         Returns: Database["public"]["Tables"]["resources"]["Row"]
+      }
+      get_my_org_domains: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
+      set_allowed_domains: {
+        Args: {
+          p_domains: string[]
+        }
+        Returns: Json
+      }
+      match_organization_by_email: {
+        Args: {
+          p_email: string
+        }
+        Returns: {
+          id: string
+          name: string
+        }[]
+      }
+      normalize_domain: {
+        Args: {
+          p_input: string
+        }
+        Returns: string | null
+      }
+      resolve_asset_qr: {
+        Args: {
+          p_qr: string
+        }
+        Returns: Json
+      }
+      record_asset_audit: {
+        Args: {
+          p_accessory_checks?: Json
+          p_condition: Database["public"]["Enums"]["condition_rating"]
+          p_notes?: string | null
+          p_photos: Json
+          p_qr: string
+          p_resource_id: string
+        }
+        Returns: Database["public"]["Tables"]["asset_audits"]["Row"]
+      }
+      get_custody_chain: {
+        Args: {
+          p_before?: string | null
+          p_limit?: number | null
+          p_resource_id: string
+        }
+        Returns: Json
+      }
+      search_custody_audit: {
+        Args: {
+          p_before?: number | null
+          p_event_types?: string[] | null
+          p_flagged_only?: boolean | null
+          p_from?: string | null
+          p_limit?: number | null
+          p_query?: string | null
+          p_resource_id?: string | null
+          p_to?: string | null
+          p_user_id?: string | null
+        }
+        Returns: Json
+      }
+      get_my_custody_summary: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      can_read_prior_return_photo: {
+        Args: {
+          p_object_name: string
+        }
+        Returns: boolean
       }
       decide_booking: {
         Args: { p_approve: boolean; p_booking_id: string; p_note?: string }

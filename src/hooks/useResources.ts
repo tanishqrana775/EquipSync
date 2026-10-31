@@ -159,7 +159,7 @@ export function useResources(filters?: ResourceFilters) {
       id?: string;
     }) => {
       const targetInstId = input.institutionId || institutionId;
-      if (!targetInstId) throw new Error('No organisation associated with this user');
+      if (!targetInstId) throw new Error('No organization associated with this user');
 
       const payload: Database['public']['Tables']['resources']['Insert'] = {
         institution_id: targetInstId,
@@ -334,7 +334,7 @@ export function useResources(filters?: ResourceFilters) {
   // Upload resource image: '<institution_id>/<resource_id>/<filename>'
   const uploadResourceImage = useCallback(
     async (resourceId: string, file: File): Promise<string> => {
-      if (!institutionId) throw new Error('No organisation ID found');
+      if (!institutionId) throw new Error('No organization ID found');
       const ext = file.name.split('.').pop() || 'jpg';
       const path = `${institutionId}/${resourceId}/${Date.now()}.${ext}`;
 
@@ -352,7 +352,7 @@ export function useResources(filters?: ResourceFilters) {
   // Upload evidence: '<institution_id>/<resource_id>/<filename>'
   const uploadEvidence = useCallback(
     async (resourceId: string, file: File, note?: string): Promise<string> => {
-      if (!institutionId) throw new Error('No organisation ID found');
+      if (!institutionId) throw new Error('No organization ID found');
       const ext = file.name.split('.').pop() || 'pdf';
       const path = `${institutionId}/${resourceId}/evidence_${Date.now()}.${ext}`;
 

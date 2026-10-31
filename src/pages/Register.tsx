@@ -26,11 +26,12 @@ import {
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
 import { signUpMember, signUpInstitution, searchInstitutions, resendVerification, verifySignUpOtp, Institution } from '@/lib/auth';
+import { matchOrganizationByEmail } from '@/lib/api/rpc';
+import { supabase } from '@/lib/supabase';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
-import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2, Lock } from 'lucide-react';
 import { OtpInput } from '@/components/shared/OtpInput';
-
 const registerSchema = z.object({
   accountType: z.enum(['member', 'institution_admin']),
   fullName: z.string().min(2, 'Full name is required'),
@@ -47,7 +48,7 @@ const registerSchema = z.object({
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export function Register() {
-  const { setRole } = useAuth();
+  const { setRole, refresh } = useAuth();
   const navigate = useNavigate();
   const [selectedInstObj, setSelectedInstObj] = useState<Institution | null>(null);
   const [institutionError, setInstitutionError] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export function Register() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
+  const [matchedOrg, setMatchedOrg] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -84,6 +86,27 @@ export function Register() {
       institutionType: 'University',
     },
   });
+  const watchedEmail = form.watch('email');
+  useEffect(() => {
+    if (accountType !== 'member' || !watchedEmail || !watchedEmail.includes('@')) {
+      setMatchedOrg(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      const org = await matchOrganizationByEmail(watchedEmail);
+      if (org) {
+        setMatchedOrg(org);
+        setSelectedInstObj({ id: org.id, name: org.name, type: 'University' });
+        form.setValue('institutionId', org.id);
+        setInstitutionError(null);
+      } else {
+        setMatchedOrg(null);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [watchedEmail, accountType, form]);
 
   const onSubmit = async (values: RegisterFormValues) => {
     try {
@@ -94,13 +117,13 @@ export function Register() {
           email: values.email,
           password: values.password,
           fullName: values.fullName,
-          institutionName: values.institutionName || 'My Organisation Hub',
+          institutionName: values.institutionName || 'My Organization Hub',
           institutionType: values.institutionType || 'University',
         }) as { user?: unknown; session?: unknown };
       } else {
         if (!selectedInstObj) {
-          setInstitutionError('Please select an organisation from the list');
-          toast.error('Please select an organisation from the suggestions list.');
+          setInstitutionError('Please select an organization from the list');
+          toast.error('Please select an organization from the suggestions list.');
           return;
         }
         res = await signUpMember({
@@ -166,7 +189,29 @@ export function Register() {
       setIsVerifying(true);
       setOtpError(null);
       await verifySignUpOtp(registeredEmail, code);
-      toast.success('Account confirmed successfully!');
+      await refresh();
+
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        if (userRes.user?.id) {
+          const { data: prof } = await supabase
+            .from('profiles')
+            .select('verification_method, institution_id, institutions(name)')
+            .eq('id', userRes.user.id)
+            .single();
+          if (prof?.verification_method === 'domain') {
+            const orgName = (prof.institutions as { name?: string })?.name || 'your organization';
+            toast.success(`You were verified automatically for ${orgName}.`);
+          } else {
+            toast.success('Account confirmed successfully!');
+          }
+        } else {
+          toast.success('Account confirmed successfully!');
+        }
+      } catch {
+        toast.success('Account confirmed successfully!');
+      }
+
       navigate(accountType === 'institution_admin' ? '/app/institution' : '/app/user', { replace: true });
     } catch (err: unknown) {
       const nextAttempts = failedAttempts + 1;
@@ -317,7 +362,7 @@ export function Register() {
               }`}
             >
               <Building2 className="h-3.5 w-3.5" />
-              <span>Organisation Admin</span>
+              <span>Organization Admin</span>
             </button>
           </div>
 
@@ -375,18 +420,44 @@ export function Register() {
                     />
                   </div>
 
-                  <div>
-                    <FormLabel className="text-xs font-semibold block mb-1">Organisation Affiliation</FormLabel>
-                    <InstitutionSearchAutocomplete
-                      selectedInstitution={selectedInstObj}
-                      onSelect={(inst) => {
-                        setSelectedInstObj(inst);
-                        setInstitutionError(null);
-                        form.setValue('institutionId', inst ? inst.id : '');
-                      }}
-                      error={institutionError}
-                    />
-                  </div>
+                  {matchedOrg ? (
+                    <div className="space-y-2">
+                      <FormLabel className="text-xs font-semibold block">Organization Affiliation</FormLabel>
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-start gap-2 animate-fade-in">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block">
+                            Recognized: {matchedOrg.name}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground block">
+                            You&apos;ll be verified automatically after you confirm your email.
+                          </span>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          value={matchedOrg.name}
+                          readOnly
+                          disabled
+                          className="bg-muted/60 text-xs font-semibold cursor-not-allowed pr-8"
+                        />
+                        <Lock className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <FormLabel className="text-xs font-semibold block mb-1">Organization Affiliation</FormLabel>
+                      <InstitutionSearchAutocomplete
+                        selectedInstitution={selectedInstObj}
+                        onSelect={(inst) => {
+                          setSelectedInstObj(inst);
+                          setInstitutionError(null);
+                          form.setValue('institutionId', inst ? inst.id : '');
+                        }}
+                        error={institutionError}
+                      />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -395,9 +466,9 @@ export function Register() {
                     name="institutionName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-semibold">Organisation Name</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Organization Name</FormLabel>
                         <FormControl>
-                          <Input aria-label="Organisation Name" className="hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
+                          <Input aria-label="Organization Name" className="hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -409,7 +480,7 @@ export function Register() {
                     name="institutionType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-semibold">Organisation Type</FormLabel>
+                        <FormLabel className="text-xs font-semibold">Organization Type</FormLabel>
                         <FormControl>
                           <select
                             {...field}

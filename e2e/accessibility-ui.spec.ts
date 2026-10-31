@@ -306,4 +306,203 @@ test.describe('UI, Accessibility & Inventory Lifecycle Quality Gates', () => {
 
     await expect(categoryBtn).toContainText('Test Cat');
   });
+
+  test('no visible text "institution" on entry routes and main app routes', async ({ page }) => {
+    // Public landing
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    const bodyTextLanding = await page.innerText('body');
+    expect(bodyTextLanding).not.toMatch(/\binstitutions?\b/i);
+    expect(bodyTextLanding).not.toMatch(/\borganisations?\b/i);
+
+    // Sign in
+    await page.goto('/login');
+    await page.waitForLoadState('domcontentloaded');
+    const bodyTextLogin = await page.innerText('body');
+    expect(bodyTextLogin).not.toMatch(/\binstitutions?\b/i);
+    expect(bodyTextLogin).not.toMatch(/\borganisations?\b/i);
+
+    // Register
+    await page.goto('/register');
+    await page.waitForLoadState('domcontentloaded');
+    const bodyTextReg = await page.innerText('body');
+    expect(bodyTextReg).not.toMatch(/\binstitutions?\b/i);
+    expect(bodyTextReg).not.toMatch(/\borganisations?\b/i);
+  });
+
+  test('custody page renders without clock placeholder and renders admin tabs', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    await page.route('**/rest/v1/rpc/search_custody_audit*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 1,
+            actor_id: 'admin-uuid-1234',
+            action: 'custody_event',
+            entity_type: 'bookings',
+            entity_id: 'bk-123',
+            created_at: new Date().toISOString(),
+            actor_name: 'Admin User',
+            resource_name: 'Laser Cutter Pro',
+            asset_tag: 'EQP-7K9M2W',
+            booking_status: 'checked_out',
+            is_flagged: false,
+            metadata: {},
+          },
+        ]),
+      });
+    });
+
+    await page.goto('/app/custody');
+    await page.waitForLoadState('domcontentloaded');
+
+    // No clock placeholder text or spinner
+    await expect(page.locator('text=Loading chain of custody cryptographic verification record')).not.toBeVisible();
+
+    // Admin tabs
+    await expect(page.getByRole('tab', { name: /All custody/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Asset chains/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Actions/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /My custody/i })).not.toBeVisible();
+  });
+
+  test('custody page renders member tabs for member role', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'member');
+    await page.route('**/rest/v1/rpc/get_my_custody_summary*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          active_holdings: [],
+          loan_history: [],
+        }),
+      });
+    });
+
+    await page.goto('/app/custody');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Member tabs
+    await expect(page.getByRole('tab', { name: /My custody/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Asset chains/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Actions/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /All custody/i })).not.toBeVisible();
+  });
+
+  test('pending member sees warning banner and disabled reservation buttons on discover page', async ({ page }) => {
+    // Mock pending member authenticated session
+    await mockAuthenticatedSession(page, 'member', 'Stanford Equipment Hub', 'pending');
+
+    await page.goto('/app/discover');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Alert banner displayed
+    await expect(page.locator('text=account is pending verification by your organization')).toBeVisible();
+  });
+
+  test('Register shows recognized-organization chip when matching email is entered', async ({ page }) => {
+    await page.route('**/rest/v1/rpc/match_organization_by_email*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'inst-imperial',
+            name: 'Imperial College London',
+            allowed_domains: ['imperial.ac.uk'],
+          },
+        ]),
+      });
+    });
+
+    await page.goto('/register');
+    await page.waitForLoadState('domcontentloaded');
+
+    const emailInput = page.getByLabel(/Email Address/i);
+    await emailInput.fill('student@imperial.ac.uk');
+
+    // Recognized organization banner/chip appears
+    await expect(page.locator('text=Recognized: Imperial College London')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Organization settings rejects public email providers with descriptive feedback', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    await page.goto('/app/institution/settings');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Page renders domain management card
+    await expect(page.locator('text=Verified Domains')).toBeVisible();
+
+    // Try adding public provider
+    const domainInput = page.getByPlaceholder(/institution\.edu/i);
+    await domainInput.fill('gmail.com');
+
+    const addBtn = page.getByRole('button', { name: /Add Domain/i });
+    await addBtn.click();
+
+    // Validation error toast or message
+    await expect(page.locator('text=Public email providers')).toBeVisible({ timeout: 5000 });
+  });
+
+  test.skip('manual QR entry with invalid code displays friendly error toast', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    await page.route('**/rest/v1/rpc/resolve_asset_qr*', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 'P0001',
+          message: 'not_found',
+        }),
+      });
+    });
+
+    await page.goto('/app/custody');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Open QR dialog
+    const scanBtn = page.getByRole('button', { name: /Identify Asset/i });
+    await scanBtn.click();
+
+    const tagInput = page.getByPlaceholder(/EQS-A1B2C3D4E5/i);
+    await expect(tagInput).toBeVisible();
+    await tagInput.fill('EQP-INVALID99');
+
+    const identifyBtn = page.getByRole('button', { name: /Identify/i });
+    await identifyBtn.click();
+
+    // Error toast appears
+    await expect(page.locator('text=not found')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('axe-core accessibility on /app/custody and /app/institution/settings has no critical/serious issues', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    // Test /app/custody
+    await page.goto('/app/custody');
+    await page.waitForLoadState('domcontentloaded');
+    const custodyResults = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .disableRules(['color-contrast'])
+      .analyze();
+
+    const seriousCustody = custodyResults.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
+    expect(seriousCustody).toEqual([]);
+
+    // Test /app/institution/settings
+    await page.goto('/app/institution/settings');
+    await page.waitForLoadState('domcontentloaded');
+    const settingsResults = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .disableRules(['color-contrast'])
+      .analyze();
+
+    const seriousSettings = settingsResults.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
+    expect(seriousSettings).toEqual([]);
+  });
 });

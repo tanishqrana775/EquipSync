@@ -11,8 +11,8 @@ export { CampusShareError, EquipSyncError };
 const ERROR_MAP: Record<string, string> = {
   not_authenticated: 'Please sign in to continue.',
   forbidden: "You don't have permission to perform this action.",
-  not_verified: 'Your account is pending verification by your institution.',
-  invalid_institution: 'Institution not found. Check the institution ID or sign up as an admin.',
+  not_verified: "Your account is pending verification by your organization's admin.",
+  invalid_institution: 'Organization not found. Check the organization ID or sign up as an admin.',
   resource_unavailable: 'This resource is not currently available for booking.',
   slot_taken: 'This time slot has just been taken. Please choose different dates.',
   invalid_state: "This action is not allowed in the booking's current state.",
@@ -22,12 +22,16 @@ const ERROR_MAP: Record<string, string> = {
   invalid_hash: 'Photo tamper-evidence validation failed. The computed image hash is invalid.',
   accessory_checklist_incomplete: 'Please complete the accessory checklist for every listed component before continuing.',
   notes_required: 'Detailed notes are strictly required when reporting damaged equipment, missing accessories, or flagged returns.',
-  query_too_short: 'Please enter at least 3 characters to search organisations.',
+  query_too_short: 'Please enter at least 3 characters to search organizations.',
   not_found: 'The requested item could not be found.',
   resource_retired: 'This resource has been retired and cannot be marked as available.',
   resource_in_use: 'Cannot retire resource while active checkouts, returns, or disputes are pending.',
   asset_tag_immutable: 'Asset tags cannot be changed once assigned.',
   invalid_category: 'Please enter a valid category name (1 to 40 characters).',
+  domain_not_allowed: 'Public email providers (such as Gmail, Outlook, or Yahoo) cannot be used for auto-verification.',
+  domain_already_claimed: 'This email domain has already been claimed by another organization.',
+  domain_not_provable: 'You can only configure domains matching your confirmed administrator email address or its subdomains.',
+  invalid_domain: 'Please enter a valid domain (e.g. example.edu or *.example.edu).',
 };
 
 const ELIGIBILITY_REASON_MAP: Record<string, string> = {

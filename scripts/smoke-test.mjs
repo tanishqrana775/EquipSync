@@ -1324,6 +1324,125 @@ async function main() {
     }
   });
   }
+
+  // -------------------------------------------------------------------------
+  // 8. Migration 0012 Custody Hub & Audit Verification Tests
+  // -------------------------------------------------------------------------
+  const { error: probe0012 } = await adminAClient.rpc('resolve_asset_qr', { p_qr: 'probe' });
+  const is0012Applied = !probe0012 || (!probe0012.message.includes('schema cache') && !probe0012.message.includes('not found'));
+
+  if (!is0012Applied) {
+    console.log('\n  [NOTICE] Migration 0012_custody_hub.sql not yet executed on remote database.');
+    console.log('  Skipping Migration 0012 assertions until applied via Supabase SQL Editor.\n');
+  } else {
+    await runStep('resolve_asset_qr tenant scoping and action selection', async () => {
+      // Matching QR in tenant A
+      const { data: resA, error: rAErr } = await memberA1Client.rpc('resolve_asset_qr', { p_qr: r2QrIdentifier });
+      if (rAErr) throw rAErr;
+      if (resA.resource_id !== resourceR2Id || !Array.isArray(resA.actions)) {
+        throw new Error('Expected resolved resource data with actions array');
+      }
+
+      // Cross-tenant QR from Tenant B raises not_found
+      const { error: rBErr } = await memberB1Client.rpc('resolve_asset_qr', { p_qr: r2QrIdentifier });
+      if (!rBErr || !rBErr.message.includes('not_found')) {
+        throw new Error(`Expected not_found for cross-tenant QR, got: ${rBErr?.message}`);
+      }
+    });
+
+    await runStep('record_asset_audit requires admin, QR and valid hashes, is immutable', async () => {
+      // Member forbidden
+      const { error: memAudErr } = await memberA1Client.rpc('record_asset_audit', {
+        p_resource_id: resourceR2Id,
+        p_qr: r2QrIdentifier,
+        p_photos: [
+          { slot: 'front', storage_path: `${instAId}/audit/front.jpg`, sha256: PNG_SHA256 },
+          { slot: 'back', storage_path: `${instAId}/audit/back.jpg`, sha256: PNG_SHA256 },
+          { slot: 'left', storage_path: `${instAId}/audit/left.jpg`, sha256: PNG_SHA256 },
+          { slot: 'right', storage_path: `${instAId}/audit/right.jpg`, sha256: PNG_SHA256 },
+        ],
+        p_condition: 'good',
+        p_accessory_checks: [],
+        p_notes: 'Spot audit test',
+      });
+      if (!memAudErr || !memAudErr.message.includes('forbidden')) {
+        throw new Error(`Expected forbidden for member record_asset_audit, got: ${memAudErr?.message}`);
+      }
+
+      // Admin records spot audit
+      const { data: audRow, error: audErr } = await adminAClient.rpc('record_asset_audit', {
+        p_resource_id: resourceR2Id,
+        p_qr: r2QrIdentifier,
+        p_photos: [
+          { slot: 'front', storage_path: `${instAId}/audit/front.jpg`, sha256: PNG_SHA256 },
+          { slot: 'back', storage_path: `${instAId}/audit/back.jpg`, sha256: PNG_SHA256 },
+          { slot: 'left', storage_path: `${instAId}/audit/left.jpg`, sha256: PNG_SHA256 },
+          { slot: 'right', storage_path: `${instAId}/audit/right.jpg`, sha256: PNG_SHA256 },
+        ],
+        p_condition: 'good',
+        p_accessory_checks: [],
+        p_notes: 'Spot audit test',
+      });
+      if (audErr) throw audErr;
+      if (!audRow.id) throw new Error('Expected created audit row');
+
+      // Immutability: direct update blocked by trigger
+      const { error: updErr } = await adminAClient
+        .from('asset_audits')
+        .update({ notes: 'Mutated notes' })
+        .eq('id', audRow.id);
+      if (!updErr || !updErr.message.includes('asset_audits_immutable')) {
+        throw new Error(`Expected asset_audits_immutable error, got: ${updErr?.message}`);
+      }
+    });
+
+    await runStep('custody RPC permissions and redaction rules', async () => {
+      // Member cannot call search_custody_audit
+      const { error: sMemErr } = await memberA1Client.rpc('search_custody_audit', { p_query: 'test' });
+      if (!sMemErr || !sMemErr.message.includes('forbidden')) {
+        throw new Error(`Expected forbidden for member search_custody_audit, got: ${sMemErr?.message}`);
+      }
+
+      // Admin can search audit logs
+      const { data: sAdmin, error: sAdminErr } = await adminAClient.rpc('search_custody_audit', { limit: 10 });
+      if (sAdminErr) throw sAdminErr;
+      if (!Array.isArray(sAdmin)) throw new Error('Expected array of audit log rows');
+
+      // Member A2 has a booking on R2 -> can get custody chain
+      const { data: chainA2, error: cA2Err } = await memberA2Client.rpc('get_custody_chain', {
+        p_resource_id: resourceR2Id,
+      });
+      if (cA2Err) throw cA2Err;
+      if (!Array.isArray(chainA2)) throw new Error('Expected array of custody segments');
+
+      // Redaction check: Member A2 sees previous borrower loan redacted
+      const redactedSeg = chainA2.find((s) => s.redacted);
+      if (redactedSeg) {
+        if (redactedSeg.borrower !== null) {
+          throw new Error('Redacted segment must have borrower set to null');
+        }
+        if (redactedSeg.checkout !== null) {
+          throw new Error('Redacted segment must have checkout set to null');
+        }
+      }
+
+      // Member B1 (other tenant) is forbidden
+      const { error: cBErr } = await memberB1Client.rpc('get_custody_chain', {
+        p_resource_id: resourceR2Id,
+      });
+      if (!cBErr || !cBErr.message.includes('forbidden')) {
+        throw new Error(`Expected forbidden for cross-tenant get_custody_chain, got: ${cBErr?.message}`);
+      }
+    });
+
+    await runStep('get_my_custody_summary returns holdings and past loans', async () => {
+      const { data: sumA2, error: sumErr } = await memberA2Client.rpc('get_my_custody_summary');
+      if (sumErr) throw sumErr;
+      if (!Array.isArray(sumA2.active_holdings) || !Array.isArray(sumA2.loan_history)) {
+        throw new Error('Expected active_holdings and loan_history arrays in summary');
+      }
+    });
+  }
   // -------------------------------------------------------------------------
   // Summary Results
   // -------------------------------------------------------------------------

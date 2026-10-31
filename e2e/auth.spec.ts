@@ -54,15 +54,15 @@ test.describe('Authentication Forms & Interactions', () => {
     expect(await memberPassword.getAttribute('type')).toBe('text');
     await page.getByRole('button', { name: /Hide password/i }).click();
     expect(await memberPassword.getAttribute('type')).toBe('password');
-    // --- Organisation Admin Tab ---
-    const adminTab = page.getByRole('button', { name: /Organisation Admin/i });
+    // --- Organization Admin Tab ---
+    const adminTab = page.getByRole('button', { name: /Organi[sz]ation Admin/i });
     await adminTab.click();
 
     const adminNameInput = page.locator('input[aria-label="Full Name"]');
     await expect(adminNameInput).toBeVisible();
     expect(await adminNameInput.getAttribute('placeholder')).toBeFalsy();
 
-    const adminOrgNameInput = page.locator('input[aria-label="Organisation Name"]');
+    const adminOrgNameInput = page.locator('input[aria-label*="rgani"][aria-label*="ation Name"]');
     await expect(adminOrgNameInput).toBeVisible();
     expect(await adminOrgNameInput.getAttribute('placeholder')).toBeFalsy();
 
@@ -75,7 +75,7 @@ test.describe('Authentication Forms & Interactions', () => {
     await expect(orgTypeSelect).toBeVisible();
   });
 
-  test('typing 3 characters in member institution field displays suggestions', async ({ page }) => {
+  test('typing 3 characters in member organization field displays suggestions', async ({ page }) => {
     // Intercept search_institutions RPC
     await page.route('**/rest/v1/rpc/search_institutions*', async (route) => {
       await route.fulfill({
@@ -91,7 +91,7 @@ test.describe('Authentication Forms & Interactions', () => {
     await page.goto('/register');
     await page.waitForLoadState('domcontentloaded');
 
-    const searchInput = page.getByLabel(/Organisation Name Search/i);
+    const searchInput = page.getByLabel(/Organi[sz]ation Name Search/i);
     await expect(searchInput).toBeVisible();
 
     // Type fewer than 3 characters -> no suggestions popup

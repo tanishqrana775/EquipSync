@@ -10,8 +10,8 @@ This operational guide provides step-by-step instructions for configuring custom
 
 1. Navigate to your Supabase Project Dashboard: **Project Settings** &rarr; **Authentication** &rarr; **SMTP Settings**.
 2. Enable **Enable Custom SMTP**.
-3. Fill in your institutional transactional email provider credentials:
-   - **Sender email**: `noreply@your-institution.edu` (or verified sending domain)
+3. Fill in your organization's transactional email provider credentials:
+   - **Sender email**: `noreply@your-organization.edu` (or verified sending domain)
    - **Sender name**: `EquipSync Equipment Sharing`
    - **Host**: e.g., `smtp.sendgrid.net`, `smtp.postmarkapp.com`, or `email-smtp.us-east-1.amazonaws.com`
    - **Port**: `587` (TLS) or `465` (SSL)
@@ -27,7 +27,7 @@ In **Authentication** &rarr; **Configuration** &rarr; **Auth Providers** &rarr; 
 
 | Setting | Required Value | Purpose |
 | :--- | :--- | :--- |
-| **Enable Email Signup** | `Enabled` | Allows institutional members and admins to create accounts |
+| **Enable Email Signup** | `Enabled` | Allows organization members and admins to create accounts |
 | **Confirm Email** | `Enabled` | Enforces OTP verification before account activation |
 | **Minimum Password Length** | `8` | Ensures password complexity meets security policy |
 | **OTP Expiry** | `600 seconds` (10 minutes) | Enforces 10-minute token validity window |

@@ -87,7 +87,7 @@ export function Topbar({ onSearchClick }: TopbarProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="cursor-pointer text-xs">
-              Organisation / Unit:
+              Organization / Unit:
               <span className="font-semibold ml-1 truncate">{user.department}</span>
             </DropdownMenuItem>
             <DropdownMenuItem className="cursor-pointer text-xs">

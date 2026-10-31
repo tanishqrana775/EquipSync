@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  AlertTriangle,
   FileText,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useBookings } from '@/hooks/useBookings';
+import { useAuth } from '@/providers/AuthProvider';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 import {
@@ -32,9 +34,9 @@ import {
 
 export function MyBookings() {
   const { bookings, cancelBooking, loading } = useBookings();
+  const { isVerified, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
-
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
       const matchesSearch = b.resourceTitle.toLowerCase().includes(searchTerm.toLowerCase()) || b.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -66,6 +68,31 @@ export function MyBookings() {
         description="View your active custody passes, track reservation status, and manage upcoming asset returns."
       />
 
+      {/* Pending / Rejected Member Alert Banner */}
+      {!isVerified && (
+        <div
+          role="alert"
+          className={`p-4 rounded-2xl border text-xs flex items-start gap-3 animate-fade-in ${
+            user?.verificationStatus === 'rejected'
+              ? 'bg-destructive/10 border-destructive/30 text-destructive'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold block text-sm">
+              {user?.verificationStatus === 'rejected'
+                ? 'Verification Declined'
+                : 'Account Verification Pending'}
+            </span>
+            <p className="leading-relaxed">
+              {user?.verificationStatus === 'rejected'
+                ? "Your verification was declined. Contact your organization's admin."
+                : "Your account is pending verification by your organization's admin. You can browse, but reservations are disabled until you're verified."}
+            </p>
+          </div>
+        </div>
+      )}
       {/* Summary Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[

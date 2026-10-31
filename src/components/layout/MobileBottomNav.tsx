@@ -25,7 +25,7 @@ export function MobileBottomNav() {
         },
         {
           label: 'Custody',
-          to: '/app/bookings/bk-2024-001',
+          to: '/app/custody',
           icon: FileCheck2,
         },
       ]
@@ -41,8 +41,8 @@ export function MobileBottomNav() {
           icon: Compass,
         },
         {
-          label: 'My Passes',
-          to: '/app/bookings/bk-2024-001',
+          label: 'Custody',
+          to: '/app/custody',
           icon: FileCheck2,
         },
       ];

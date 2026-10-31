@@ -7,8 +7,9 @@
  */
 
 import { supabase } from './supabase';
-import { checkOutBooking, checkInBooking } from './api/rpc';
+import { checkOutBooking, checkInBooking, recordAssetAuditRpc } from './api/rpc';
 import type { Booking, PhotoInput, AccessoryCheckInput, ConditionRating } from './api/rpc';
+import type { Database } from './database.types';
 
 // ===========================================================================
 // Types
@@ -258,11 +259,12 @@ export async function uploadCustodyPhoto(args: {
 export async function getSignedPhotoUrls(
   paths:     string[],
   expiresIn  = 3600,
+  bucket     = 'custody-photos'
 ): Promise<Record<string, string>> {
   if (paths.length === 0) return {};
 
   const { data, error } = await supabase.storage
-    .from('custody-photos')
+    .from(bucket)
     .createSignedUrls(paths, expiresIn);
 
   if (error) throw error;
@@ -474,4 +476,50 @@ export function buildBeforeAfterPairs(
   }
 
   return Object.values(bySlot).sort((a, b) => a.slot.localeCompare(b.slot));
+}
+
+// ===========================================================================
+// submitSpotAudit  (admin spot-audit orchestrator)
+// ===========================================================================
+export async function submitSpotAudit(args: {
+  institutionId:   string;
+  resourceId:      string;
+  auditId:         string;
+  photos:          CustodyPhotoInput[];
+  requiredSlots:   string[];
+  condition:       ConditionRating;
+  notes:           string;
+  accessoryChecks?: AccessoryCheckInput[];
+  qrIdentifier:    string;
+}): Promise<Database['public']['Tables']['asset_audits']['Row']> {
+  const uploaded = await Promise.all(
+    args.photos.map(async (p): Promise<UploadedPhoto> => {
+      const storagePath = `${args.institutionId}/${args.auditId}/${p.slot}.jpg`;
+      const sha256 = await sha256Hex(p.file);
+
+      const { error: upErr } = await supabase.storage
+        .from('asset-audit-photos')
+        .upload(storagePath, p.file, { contentType: 'image/jpeg', upsert: false });
+
+      if (upErr && !upErr.message.toLowerCase().includes('duplicate')) {
+        throw upErr;
+      }
+
+      return {
+        slot: p.slot,
+        storage_path: storagePath,
+        sha256,
+        client_captured_at: p.client_captured_at || new Date().toISOString(),
+      };
+    })
+  );
+
+  return await recordAssetAuditRpc({
+    resourceId: args.resourceId,
+    qr: args.qrIdentifier,
+    photos: uploaded,
+    condition: args.condition,
+    accessoryChecks: args.accessoryChecks,
+    notes: args.notes,
+  });
 }

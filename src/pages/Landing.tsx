@@ -134,7 +134,7 @@ export function Landing() {
               Frequently asked questions
             </h2>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-              Transparent answers on institutional governance, cryptographic custody, and member access.
+              Transparent answers on organization governance, cryptographic custody, and member access.
             </p>
           </div>
 
@@ -168,10 +168,10 @@ export function Landing() {
 
             <AccordionItem value="item-4">
               <AccordionTrigger className="text-sm font-bold text-foreground text-left">
-                How is data isolation enforced between different institutions?
+                How is data isolation enforced between different organizations?
               </AccordionTrigger>
               <AccordionContent className="text-xs text-muted-foreground leading-relaxed">
-                EquipSync enforces multi-tenancy at the PostgreSQL kernel layer via Row Level Security (RLS). Every table is isolated by institution ID. Unauthenticated clients and members cannot read or access internal resources, audit logs, or custody evidence of another organisation.
+                EquipSync enforces multi-tenancy at the PostgreSQL kernel layer via Row Level Security (RLS). Every table is isolated by organization ID. Unauthenticated clients and members cannot read or access internal resources, audit logs, or custody evidence of another organization.
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -189,7 +189,7 @@ export function Landing() {
                   <span>Ready for Deployment</span>
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-                  Start sharing equipment across your organisation today
+                  Start sharing equipment across your organization today
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
                   Join verified universities, research labs, workshops, and makerspaces using EquipSync to eliminate inventory hoarding and protect high-value assets.
@@ -199,7 +199,7 @@ export function Landing() {
               <div className="shrink-0 flex flex-col sm:flex-row gap-3">
                 <Link to="/register">
                   <Button size="lg" className="w-full sm:w-auto font-bold shadow-md px-6">
-                    Create Organisation Account
+                    Create Organization Account
                   </Button>
                 </Link>
                 <Link to="/login">

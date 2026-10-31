@@ -38,7 +38,7 @@ export function InteractivePreview() {
             See it in action
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            Experience how EquipSync unifies organisation governance, certified borrowing, and cryptographic handovers into one friction-free workflow.
+            Experience how EquipSync unifies organization governance, certified borrowing, and cryptographic handovers into one friction-free workflow.
           </p>
         </div>
 

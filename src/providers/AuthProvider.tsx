@@ -62,10 +62,12 @@ function mapProfileToUser(
     name: profile.full_name || session.user.email?.split('@')[0] || 'Member',
     email: session.user.email || '',
     role,
-    department: institutionName || profile.user_type || 'General Organisation',
+    department: institutionName || profile.user_type || 'General Organization',
     campusId: profile.id.slice(0, 8).toUpperCase(),
     avatar: profile.avatar_url || '',
     isVerified: profile.verification_status === 'verified',
+    verificationStatus: profile.verification_status,
+    verificationMethod: profile.verification_method,
     joinedDate: profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Active',
   };
 }

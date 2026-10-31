@@ -371,6 +371,139 @@ export async function reactivateResourceRpc(
 }
 
 // ---------------------------------------------------------------------------
+// Domain Verification RPCs
+// ---------------------------------------------------------------------------
+
+export async function getMyOrgDomains(): Promise<string[]> {
+  const data = unwrap<string[]>(
+    await supabase.rpc('get_my_org_domains')
+  );
+  return data ?? [];
+}
+
+export async function setAllowedDomains(
+  domains: string[]
+): Promise<{ domains: string[]; newly_verified: number }> {
+  const data = unwrap<{ domains: string[]; newly_verified: number }>(
+    await supabase.rpc('set_allowed_domains', {
+      p_domains: domains,
+    })
+  );
+  return data;
+}
+
+export async function matchOrganizationByEmail(
+  email: string
+): Promise<{ id: string; name: string } | null> {
+  const trimmed = email.trim();
+  if (!trimmed || !trimmed.includes('@')) return null;
+  try {
+    const rows = unwrap<Array<{ id: string; name: string }>>(
+      await supabase.rpc('match_organization_by_email', {
+        p_email: trimmed,
+      })
+    );
+    if (rows && rows.length > 0) {
+      return rows[0];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Custody Hub RPCs
+// ---------------------------------------------------------------------------
+
+export interface ResolvedAssetQr {
+  resource_id: string;
+  name: string;
+  asset_tag: string;
+  status: string;
+  actions: Array<{ type: 'checkout' | 'return'; booking_id: string }>;
+  can_audit: boolean;
+}
+
+export async function resolveAssetQr(qr: string): Promise<ResolvedAssetQr> {
+  return unwrap(
+    await supabase.rpc('resolve_asset_qr', { p_qr: qr })
+  ) as ResolvedAssetQr;
+}
+
+export async function recordAssetAuditRpc(args: {
+  resourceId: string;
+  qr: string;
+  photos: PhotoInput[];
+  condition: ConditionRating;
+  accessoryChecks?: AccessoryCheckInput[];
+  notes?: string;
+}): Promise<Database['public']['Tables']['asset_audits']['Row']> {
+  return unwrap(
+    await supabase.rpc('record_asset_audit', {
+      p_resource_id: args.resourceId,
+      p_qr: args.qr,
+      p_photos: args.photos as unknown as Database['public']['Tables']['asset_audits']['Row']['photos'],
+      p_condition: args.condition,
+      p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['asset_audits']['Row']['accessory_checks'],
+      p_notes: args.notes ?? null,
+    })
+  ) as Database['public']['Tables']['asset_audits']['Row'];
+}
+
+export async function getCustodyChainRpc(args: {
+  resourceId: string;
+  limit?: number;
+  before?: string;
+}): Promise<any[]> {
+  return unwrap(
+    await supabase.rpc('get_custody_chain', {
+      p_resource_id: args.resourceId,
+      p_limit: args.limit ?? 50,
+      p_before: args.before ?? null,
+    })
+  ) as any[];
+}
+
+export async function searchCustodyAuditRpc(args: {
+  query?: string;
+  resourceId?: string;
+  userId?: string;
+  eventTypes?: string[];
+  from?: string;
+  to?: string;
+  flaggedOnly?: boolean;
+  limit?: number;
+  before?: number;
+}): Promise<any[]> {
+  return unwrap(
+    await supabase.rpc('search_custody_audit', {
+      p_query: args.query ?? null,
+      p_resource_id: args.resourceId ?? null,
+      p_user_id: args.userId ?? null,
+      p_event_types: args.eventTypes ?? null,
+      p_from: args.from ?? null,
+      p_to: args.to ?? null,
+      p_flagged_only: args.flaggedOnly ?? false,
+      p_limit: args.limit ?? 50,
+      p_before: args.before ?? null,
+    })
+  ) as any[];
+}
+
+export async function getMyCustodySummaryRpc(): Promise<{
+  active_holdings: any[];
+  loan_history: any[];
+}> {
+  return unwrap(
+    await supabase.rpc('get_my_custody_summary')
+  ) as {
+    active_holdings: any[];
+    loan_history: any[];
+  };
+}
+
+// ---------------------------------------------------------------------------
 // report_incident  (participant)
 // ---------------------------------------------------------------------------
 export async function reportIncident(args: {

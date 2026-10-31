@@ -10,7 +10,7 @@ export const E2E_ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'AdminPass12
 export const E2E_MEMBER_EMAIL = process.env.E2E_MEMBER_EMAIL || 'member.e2e@equipsync.org';
 export const E2E_MEMBER_PASSWORD = process.env.E2E_MEMBER_PASSWORD || 'MemberPass123!#';
 
-function makeFakeJwt(payload: Record<string, unknown>): string {
+export function makeFakeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
   const body = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 * 24, ...payload })).toString('base64url');
   const sig = Buffer.from('mock-sig').toString('base64url');

@@ -126,33 +126,87 @@ export async function signInWithOAuth(provider: Provider): Promise<void> {
 // Sign out
 // ---------------------------------------------------------------------------
 export async function signOut(): Promise<void> {
-  unwrap(await supabase.auth.signOut());
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // Ignore network or mock errors on sign out
+  }
 }
 
 
 // ---------------------------------------------------------------------------
-// Email verification & Password recovery
+// Email verification & Password recovery (OTP Flow)
 // ---------------------------------------------------------------------------
 
+const RECOVERY_STORAGE_KEY = 'equipsync:recovery';
+
+export function setRecoveryMode(active: boolean): void {
+  if (typeof window === 'undefined') return;
+  if (active) {
+    sessionStorage.setItem(RECOVERY_STORAGE_KEY, '1');
+  } else {
+    sessionStorage.removeItem(RECOVERY_STORAGE_KEY);
+  }
+}
+
+export function isRecoveryMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  return sessionStorage.getItem(RECOVERY_STORAGE_KEY) === '1';
+}
+
+export function clearRecoveryMode(): void {
+  if (typeof window === 'undefined') return;
+  sessionStorage.removeItem(RECOVERY_STORAGE_KEY);
+}
+
+/**
+ * Requests a 6-digit password recovery code sent via email (without redirectTo).
+ */
+export async function requestPasswordOtp(email: string): Promise<void> {
+  unwrap(await supabase.auth.resetPasswordForEmail(email));
+}
+
+/**
+ * Verifies the 6-digit recovery OTP and sets the authenticated session.
+ */
+export async function verifyRecoveryOtp(email: string, token: string): Promise<Session> {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'recovery',
+  });
+  if (error) throw error;
+  setRecoveryMode(true);
+  return data.session as Session;
+}
+
+/**
+ * Verifies sign-up email confirmation OTP.
+ */
+export async function verifySignUpOtp(email: string, token: string): Promise<Session> {
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'signup',
+  });
+  if (error) throw error;
+  return data.session as Session;
+}
+
+/**
+ * Resends the sign-up confirmation email.
+ */
 export async function resendVerification(email: string): Promise<void> {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const emailRedirectTo = `${origin}/login?verified=1`;
   unwrap(
     await supabase.auth.resend({
       type: 'signup',
       email,
-      options: { emailRedirectTo },
     })
   );
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  unwrap(
-    await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/update-password`,
-    })
-  );
+  await requestPasswordOtp(email);
 }
 
 export async function updatePassword(password: string): Promise<void> {

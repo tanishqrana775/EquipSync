@@ -1054,6 +1054,276 @@ async function main() {
     if (closeErr) throw closeErr;
     if (closedBk.status !== 'closed') throw new Error(`Expected closed status, got: ${closedBk.status}`);
   });
+
+  // -------------------------------------------------------------------------
+  // 7. Migration 0010 Hardening & Lifecycle Tests
+  // -------------------------------------------------------------------------
+  const { error: probe0010 } = await adminAClient.rpc('ensure_category', { p_name: 'probe' });
+  const is0010Applied = !probe0010 || !probe0010.message.includes('schema cache');
+
+  if (!is0010Applied) {
+    console.log('\n  [NOTICE] Migration 0010_resources_hardening.sql not yet executed on remote database.');
+    console.log('  Skipping Migration 0010 assertions until applied via Supabase SQL Editor.\n');
+  } else {
+  await runStep('Blank asset_tag gets an EQP- tag from the trigger', async () => {
+    const { data: resAuto, error: autoErr } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `Auto Tag Resource ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        location: 'Auto Station',
+      })
+      .select()
+      .single();
+    if (autoErr) throw autoErr;
+    if (!resAuto.asset_tag || !/^EQP-[2-9A-HJ-NP-Z]{6}$/.test(resAuto.asset_tag)) {
+      throw new Error(`Expected EQP- tag, got: ${resAuto.asset_tag}`);
+    }
+  });
+
+  await runStep('Asset tag is unique per tenant (case-insensitive) and immutable', async () => {
+    // 1. Create with specific tag
+    const specificTag = `EQP-U${runId.slice(0, 5)}`;
+    const { data: rTag1, error: tErr1 } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `Tag Test Resource ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        asset_tag: specificTag,
+      })
+      .select()
+      .single();
+    if (tErr1) throw tErr1;
+
+    // 2. Duplicate case-insensitive tag in same institution fails
+    const { error: dupErr } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `Dup Tag Resource ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        asset_tag: specificTag.toLowerCase(),
+      });
+    if (!dupErr) {
+      throw new Error('Expected duplicate asset tag to fail');
+    }
+
+    // 3. Immutability: changing asset tag raises asset_tag_immutable
+    const { error: immErr } = await adminAClient
+      .from('resources')
+      .update({ asset_tag: 'EQP-MODIFIED' })
+      .eq('id', rTag1.id);
+    if (!immErr || !immErr.message.includes('asset_tag_immutable')) {
+      throw new Error(`Expected asset_tag_immutable error, got: ${immErr?.message}`);
+    }
+  });
+
+  await runStep('ensure_category dedupes case-insensitively, rejects empty/over-long names, forbidden for members', async () => {
+    // Member forbidden
+    const { error: memCatErr } = await memberA1Client.rpc('ensure_category', { p_name: 'Test Category' });
+    if (!memCatErr || !memCatErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for member calling ensure_category, got: ${memCatErr?.message}`);
+    }
+
+    // Rejects empty
+    const { error: emptyErr } = await adminAClient.rpc('ensure_category', { p_name: '   ' });
+    if (!emptyErr || !emptyErr.message.includes('invalid_category')) {
+      throw new Error(`Expected invalid_category for empty name, got: ${emptyErr?.message}`);
+    }
+
+    // Rejects over-long (> 40 chars)
+    const { error: longErr } = await adminAClient.rpc('ensure_category', {
+      p_name: 'This is an excessively long category name that exceeds forty characters',
+    });
+    if (!longErr || !longErr.message.includes('invalid_category')) {
+      throw new Error(`Expected invalid_category for > 40 chars, got: ${longErr?.message}`);
+    }
+
+    // Creates canonical category
+    const { data: cat1, error: c1Err } = await adminAClient.rpc('ensure_category', { p_name: 'Precision Optics' });
+    if (c1Err) throw c1Err;
+    if (cat1 !== 'Precision Optics') throw new Error(`Expected 'Precision Optics', got: ${cat1}`);
+
+    // Dedupes case-insensitively
+    const { data: cat2, error: c2Err } = await adminAClient.rpc('ensure_category', { p_name: 'precision optics' });
+    if (c2Err) throw c2Err;
+    if (cat2 !== 'Precision Optics') throw new Error(`Expected dedupe to 'Precision Optics', got: ${cat2}`);
+  });
+
+  await runStep('resource_categories is invisible to other tenants via RLS', async () => {
+    const { data: bCats, error: bErr } = await adminBClient
+      .from('resource_categories')
+      .select('*')
+      .eq('name', 'Precision Optics');
+    if (bErr) throw bErr;
+    if (bCats && bCats.length > 0) {
+      throw new Error('Tenant B could see Tenant A custom category!');
+    }
+  });
+
+  await runStep('retire_resource is blocked with resource_in_use when booking is in custody', async () => {
+    // 1. Create resource R_in_use and check out a booking
+    const { data: rUse, error: rUseErr } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `In-Use Resource ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+        asset_tag: `EQP-INUSE${runId.slice(0, 3)}`,
+      })
+      .select()
+      .single();
+    if (rUseErr) throw rUseErr;
+
+    // Add rules
+    await adminAClient.from('eligibility_rules').insert({
+      resource_id: rUse.id,
+      requires_approval: false,
+      max_duration_minutes: 1440,
+    });
+
+    const now = Date.now();
+    const { data: bUse } = await memberA1Client.rpc('request_booking', {
+      p_resource_id: rUse.id,
+      p_start: new Date(now + 60000).toISOString(),
+      p_end: new Date(now + 3600000).toISOString(),
+      p_purpose: 'In-use lock verification',
+    });
+
+    const pathFront = `${instAId}/${bUse.id}/checkout/front.jpg`;
+    const pathBack = `${instAId}/${bUse.id}/checkout/back.jpg`;
+    await memberA1Client.storage.from('custody-photos').upload(pathFront, PNG_1X1, { contentType: 'image/jpeg' });
+    await memberA1Client.storage.from('custody-photos').upload(pathBack, PNG_1X1, { contentType: 'image/jpeg' });
+
+    await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bUse.id,
+      p_photos: [
+        { slot: 'front', storage_path: pathFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'good',
+      p_notes: 'Checking out',
+      p_accessory_checks: [],
+      p_qr_identifier: rUse.qr_identifier,
+    });
+
+    // Calling retire_resource while checked_out raises resource_in_use
+    const { error: inUseErr } = await adminAClient.rpc('retire_resource', {
+      p_resource_id: rUse.id,
+      p_reason: 'Testing in-use block',
+    });
+    if (!inUseErr || !inUseErr.message.includes('resource_in_use')) {
+      throw new Error(`Expected resource_in_use error, got: ${inUseErr?.message}`);
+    }
+  });
+
+  await runStep('Member and foreign admin cannot call retire_resource or reactivate_resource', async () => {
+    const { error: memRetireErr } = await memberA1Client.rpc('retire_resource', {
+      p_resource_id: resourceR1Id,
+      p_reason: 'Unauthorized attempt',
+    });
+    if (!memRetireErr || !memRetireErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for member retire, got: ${memRetireErr?.message}`);
+    }
+
+    const { error: foreignRetireErr } = await adminBClient.rpc('retire_resource', {
+      p_resource_id: resourceR1Id,
+      p_reason: 'Cross-tenant attempt',
+    });
+    if (!foreignRetireErr || !foreignRetireErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for foreign admin retire, got: ${foreignRetireErr?.message}`);
+    }
+
+    const { error: foreignReactivateErr } = await adminBClient.rpc('reactivate_resource', {
+      p_resource_id: resourceR1Id,
+    });
+    if (!foreignReactivateErr || !foreignReactivateErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for foreign admin reactivate, got: ${foreignReactivateErr?.message}`);
+    }
+  });
+
+  await runStep('retire_resource cancels future bookings, waitlists and notifies; setting is_available = true raises resource_retired', async () => {
+    // 1. Create fresh resource with future booking & waitlist
+    const { data: rRetire } = await adminAClient
+      .from('resources')
+      .insert({
+        institution_id: instAId,
+        name: `Retire Flow Resource ${runId}`,
+        kind: 'equipment',
+        category: 'Lab Equipment',
+      })
+      .select()
+      .single();
+
+    await adminAClient.from('eligibility_rules').insert({
+      resource_id: rRetire.id,
+      requires_approval: false,
+      max_duration_minutes: 1440,
+    });
+
+    const futureStart = new Date(Date.now() + 86400 * 2000).toISOString();
+    const futureEnd = new Date(Date.now() + 86400 * 3000).toISOString();
+
+    const { data: futBooking } = await memberA1Client.rpc('request_booking', {
+      p_resource_id: rRetire.id,
+      p_start: futureStart,
+      p_end: futureEnd,
+      p_purpose: 'Future research',
+    });
+
+    await memberA2Client.rpc('join_waitlist', {
+      p_resource_id: rRetire.id,
+      p_start: futureStart,
+      p_end: futureEnd,
+    });
+
+    // 2. Retire resource
+    const { data: retiredRes, error: retErr } = await adminAClient.rpc('retire_resource', {
+      p_resource_id: rRetire.id,
+      p_reason: 'End-of-life lifecycle decommission',
+    });
+    if (retErr) throw retErr;
+    if (retiredRes.status !== 'retired' || retiredRes.is_available !== false) {
+      throw new Error(`Expected retired status and is_available=false, got: status=${retiredRes.status}, is_available=${retiredRes.is_available}`);
+    }
+
+    // Assert future booking cancelled
+    const { data: chkBk } = await adminAClient.from('bookings').select('status').eq('id', futBooking.id).single();
+    if (chkBk.status !== 'cancelled') {
+      throw new Error(`Expected future booking to be cancelled, got: ${chkBk.status}`);
+    }
+
+    // Assert waitlist cancelled
+    const { data: chkWl } = await adminAClient.from('waitlist_entries').select('status').eq('resource_id', rRetire.id);
+    if (chkWl.some((w) => w.status !== 'cancelled')) {
+      throw new Error('Expected waitlist entries to be cancelled upon retirement');
+    }
+
+    // 3. Trigger test: Setting is_available = true on retired resource raises resource_retired
+    const { error: setAvailErr } = await adminAClient
+      .from('resources')
+      .update({ is_available: true })
+      .eq('id', rRetire.id);
+    if (!setAvailErr || !setAvailErr.message.includes('resource_retired')) {
+      throw new Error(`Expected resource_retired error, got: ${setAvailErr?.message}`);
+    }
+
+    // 4. Reactivate resource
+    const { data: reactivatedRes, error: reactErr } = await adminAClient.rpc('reactivate_resource', {
+      p_resource_id: rRetire.id,
+    });
+    if (reactErr) throw reactErr;
+    if (reactivatedRes.status !== 'active' || reactivatedRes.is_available !== false) {
+      throw new Error(`Expected active status and is_available=false, got: status=${reactivatedRes.status}, is_available=${reactivatedRes.is_available}`);
+    }
+  });
+  }
   // -------------------------------------------------------------------------
   // Summary Results
   // -------------------------------------------------------------------------

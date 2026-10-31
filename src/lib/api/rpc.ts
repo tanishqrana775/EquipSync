@@ -332,6 +332,45 @@ export async function regenerateResourceQr(resourceId: string): Promise<string> 
 }
 
 // ---------------------------------------------------------------------------
+// ensure_category (admin)
+// ---------------------------------------------------------------------------
+export async function ensureCategory(name: string): Promise<string> {
+  return unwrap(
+    await supabase.rpc('ensure_category', {
+      p_name: name,
+    })
+  ) as string;
+}
+
+// ---------------------------------------------------------------------------
+// retire_resource (admin)
+// ---------------------------------------------------------------------------
+export async function retireResourceRpc(
+  resourceId: string,
+  reason?: string
+): Promise<Database['public']['Tables']['resources']['Row']> {
+  return unwrap(
+    await supabase.rpc('retire_resource', {
+      p_resource_id: resourceId,
+      p_reason: reason ?? null,
+    })
+  ) as Database['public']['Tables']['resources']['Row'];
+}
+
+// ---------------------------------------------------------------------------
+// reactivate_resource (admin)
+// ---------------------------------------------------------------------------
+export async function reactivateResourceRpc(
+  resourceId: string
+): Promise<Database['public']['Tables']['resources']['Row']> {
+  return unwrap(
+    await supabase.rpc('reactivate_resource', {
+      p_resource_id: resourceId,
+    })
+  ) as Database['public']['Tables']['resources']['Row'];
+}
+
+// ---------------------------------------------------------------------------
 // report_incident  (participant)
 // ---------------------------------------------------------------------------
 export async function reportIncident(args: {

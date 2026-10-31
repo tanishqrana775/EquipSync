@@ -25,10 +25,11 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
-import { signUpMember, signUpInstitution, searchInstitutions, resendVerification, Institution } from '@/lib/auth';
+import { signUpMember, signUpInstitution, searchInstitutions, resendVerification, verifySignUpOtp, Institution } from '@/lib/auth';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
-import { Mail, RefreshCw } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { OtpInput } from '@/components/shared/OtpInput';
 
 const registerSchema = z.object({
   accountType: z.enum(['member', 'institution_admin']),
@@ -55,7 +56,10 @@ export function Register() {
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [isResending, setIsResending] = useState(false);
-
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
   useEffect(() => {
     if (resendCooldown <= 0) return;
     const timer = setInterval(() => {
@@ -135,52 +139,129 @@ export function Register() {
     try {
       setIsResending(true);
       await resendVerification(registeredEmail);
-      toast.success('Verification link resent. Please check your inbox.');
+      toast.success('Verification code resent. Please check your inbox.');
       setResendCooldown(60);
+      setOtpError(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('limit')) {
-        toast.error('Too many emails requested. Please wait a few minutes.');
+        toast.error('Too many requests. Please wait a few minutes.');
       } else {
-        toastError(err, 'Failed to resend verification email');
+        toastError(err, 'Failed to resend confirmation email');
       }
     } finally {
       setIsResending(false);
     }
   };
 
+  const handleVerifyOtp = async (codeToVerify?: string) => {
+    if (!registeredEmail) return;
+    const code = codeToVerify || otpCode;
+    if (code.length < 6) {
+      setOtpError('Please enter all 6 digits of the confirmation code.');
+      return;
+    }
+
+    try {
+      setIsVerifying(true);
+      setOtpError(null);
+      await verifySignUpOtp(registeredEmail, code);
+      toast.success('Account confirmed successfully!');
+      navigate(accountType === 'institution_admin' ? '/app/institution' : '/app/user', { replace: true });
+    } catch (err: unknown) {
+      const nextAttempts = failedAttempts + 1;
+      setFailedAttempts(nextAttempts);
+
+      if (nextAttempts >= 5) {
+        toast.error('Maximum verification attempts exceeded. Please try again.');
+        setRegisteredEmail(null);
+        setOtpCode('');
+        setFailedAttempts(0);
+        return;
+      }
+
+      const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+      if (msg.includes('expired')) {
+        setOtpError('Verification code has expired. Please resend a new code.');
+      } else {
+        setOtpError(`Invalid code. ${5 - nextAttempts} attempt(s) remaining.`);
+      }
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   if (registeredEmail) {
+    const [local, domain] = registeredEmail.split('@');
+    const masked = local.length <= 2 ? `${local[0]}*@${domain}` : `${local[0]}***${local[local.length - 1]}@${domain}`;
+
     return (
       <div className="w-full max-w-md animate-fade-in">
-        <Card className="surface border-border/80 shadow-xl text-center">
+        <Card className="auth-glass-card rounded-2xl text-center">
           <CardHeader className="space-y-2 pb-4">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-2">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-2 shadow-xs">
               <Mail className="h-6 w-6" />
             </div>
             <CardTitle className="text-2xl font-bold tracking-tight">
-              Verify Your Email
+              Confirm Your Account
             </CardTitle>
             <CardDescription className="text-xs leading-relaxed max-w-xs mx-auto">
-              We have sent a verification link to <strong className="text-foreground">{registeredEmail}</strong>. Please click the link to activate your account.
+              We sent a 6-digit confirmation code to <strong className="text-foreground">{masked}</strong>. Enter it below to activate your account.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 pt-2">
+
+          <CardContent className="space-y-5">
+            <OtpInput
+              value={otpCode}
+              onChange={(val) => {
+                setOtpCode(val);
+                setOtpError(null);
+              }}
+              onComplete={(code) => void handleVerifyOtp(code)}
+              error={otpError}
+              disabled={isVerifying}
+            />
+
             <Button
-              variant="outline"
-              disabled={resendCooldown > 0 || isResending}
-              onClick={handleResend}
-              className="w-full gap-2 text-xs font-semibold"
+              type="button"
+              onClick={() => void handleVerifyOtp()}
+              disabled={isVerifying || otpCode.length < 6}
+              className="w-full font-semibold shadow-xs"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isResending ? 'animate-spin' : ''}`} />
-              <span>
-                {resendCooldown > 0
-                  ? `Resend Verification Email (${resendCooldown}s)`
-                  : isResending
-                  ? 'Resending...'
-                  : 'Resend Verification Email'}
-              </span>
+              {isVerifying ? 'Confirming...' : 'Confirm & Activate Account'}
             </Button>
+
+            <div className="flex items-center justify-between text-xs pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setRegisteredEmail(null);
+                  setOtpCode('');
+                  setOtpError(null);
+                }}
+                className="text-muted-foreground hover:text-foreground font-medium underline-offset-4 hover:underline"
+              >
+                Change email
+              </button>
+
+              <button
+                type="button"
+                disabled={resendCooldown > 0 || isResending}
+                onClick={handleResend}
+                className={`font-semibold flex items-center gap-1 ${
+                  resendCooldown > 0
+                    ? 'text-muted-foreground cursor-not-allowed'
+                    : 'text-primary hover:underline'
+                }`}
+              >
+                <RefreshCw className={`h-3 w-3 ${isResending ? 'animate-spin' : ''}`} />
+                <span>
+                  {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
+                </span>
+              </button>
+            </div>
           </CardContent>
+
           <CardFooter className="border-t border-border/60 pt-4 text-center justify-center text-xs text-muted-foreground">
             <Link to="/login" className="font-semibold text-primary hover:underline">
               Back to Sign In
@@ -192,7 +273,7 @@ export function Register() {
   }
   return (
     <div className="w-full max-w-md animate-fade-in">
-      <Card className="surface border-border/80 shadow-xl backdrop-blur-md bg-card/85 rounded-2xl">
+      <Card className="auth-glass-card rounded-2xl">
         <CardHeader className="space-y-1 text-center pb-4">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-2">
             <UserPlus className="h-6 w-6" />

@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../providers/AuthProvider';
 import { Resource } from '../lib/types';
 import { mapDbResourceToUi } from '../lib/api/mappers';
+import { retireResourceRpc, reactivateResourceRpc } from '../lib/api/rpc';
 import { toastError } from '../lib/errors';
 import { toast } from 'sonner';
 import type { Database } from '../lib/database.types';
@@ -218,14 +219,12 @@ export function useResources(filters?: ResourceFilters) {
     },
   });
 
-  // Retire resource
+  // Retire resource via RPC
   const retireResourceMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('resources')
-        .update({ status: 'retired', is_available: false })
-        .eq('id', id);
-      if (error) throw error;
+    mutationFn: async (args: string | { id: string; reason?: string }) => {
+      const id = typeof args === 'string' ? args : args.id;
+      const reason = typeof args === 'string' ? undefined : args.reason;
+      return await retireResourceRpc(id, reason);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['resources'] });
@@ -233,6 +232,20 @@ export function useResources(filters?: ResourceFilters) {
     },
     onError: (err) => {
       toastError(err, 'Failed to retire resource');
+    },
+  });
+
+  // Reactivate resource via RPC
+  const reactivateResourceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await reactivateResourceRpc(id);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['resources'] });
+      toast.success('Resource reactivated successfully');
+    },
+    onError: (err) => {
+      toastError(err, 'Failed to reactivate resource');
     },
   });
 
@@ -374,6 +387,7 @@ export function useResources(filters?: ResourceFilters) {
     toggleAvailability: (id: string, isAvailable: boolean) =>
       toggleAvailabilityMutation.mutateAsync({ id, isAvailable }),
     retireResource: retireResourceMutation.mutateAsync,
+    reactivateResource: reactivateResourceMutation.mutateAsync,
     saveEligibilityRules: saveEligibilityRulesMutation.mutateAsync,
     saveAccessories: saveAccessoriesMutation.mutateAsync,
     saveAvailabilityWindows: saveAvailabilityWindowsMutation.mutateAsync,

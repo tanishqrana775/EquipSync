@@ -24,6 +24,10 @@ const ERROR_MAP: Record<string, string> = {
   notes_required: 'Detailed notes are strictly required when reporting damaged equipment, missing accessories, or flagged returns.',
   query_too_short: 'Please enter at least 3 characters to search organisations.',
   not_found: 'The requested item could not be found.',
+  resource_retired: 'This resource has been retired and cannot be marked as available.',
+  resource_in_use: 'Cannot retire resource while active checkouts, returns, or disputes are pending.',
+  asset_tag_immutable: 'Asset tags cannot be changed once assigned.',
+  invalid_category: 'Please enter a valid category name (1 to 40 characters).',
 };
 
 const ELIGIBILITY_REASON_MAP: Record<string, string> = {

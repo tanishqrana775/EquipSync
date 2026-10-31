@@ -3,17 +3,16 @@
  * EquipSync – Route wrapper preventing authenticated users from accessing public auth pages.
  */
 
-import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
+import { isRecoveryMode } from '@/lib/auth';
 
 interface PublicRouteProps {
   children: React.ReactNode;
 }
 
 export function PublicRoute({ children }: PublicRouteProps) {
-  const { isAuthenticated, role, loading } = useAuth();
-
+  const { isAuthenticated, role, loading, recoveryMode } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 bg-background">
@@ -25,6 +24,9 @@ export function PublicRoute({ children }: PublicRouteProps) {
         </div>
       </div>
     );
+  }
+  if (isRecoveryMode()) {
+    return <>{children}</>;
   }
 
   if (isAuthenticated) {

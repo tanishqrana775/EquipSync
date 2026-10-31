@@ -141,7 +141,7 @@ test.describe('Workspace Navigation, Tools & Custody Gates', () => {
     await actionBtn.click();
 
     // Click "QR Asset Label"
-    const qrAction = page.getByRole('menuitem', { name: /QR Asset Label/i });
+    const qrAction = page.getByRole('menuitem', { name: /QR.*label/i });
     await expect(qrAction).toBeVisible();
     await qrAction.click();
 

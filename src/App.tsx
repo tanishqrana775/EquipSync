@@ -3,7 +3,6 @@ import { Landing } from '@/pages/Landing';
 import { SignIn } from '@/pages/SignIn';
 import { Register } from '@/pages/Register';
 import { ForgotPassword } from '@/pages/ForgotPassword';
-import { UpdatePassword } from '@/pages/UpdatePassword';
 import { MyBookings } from '@/pages/MyBookings';
 import { DisputeResolution } from '@/pages/DisputeResolution';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
@@ -55,15 +54,8 @@ export function App() {
               </PublicRoute>
             }
           />
-          <Route
-            path="/forgot-password"
-            element={
-              <PublicRoute>
-                <ForgotPassword />
-              </PublicRoute>
-            }
-          />
-          <Route path="/update-password" element={<UpdatePassword />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/update-password" element={<Navigate to="/forgot-password" replace />} />
         </Route>
         {/* Application Dashboard Routes (Protected by AppShell) */}
         <Route

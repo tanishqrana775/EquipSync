@@ -10,8 +10,8 @@ import { getMyContext } from '../lib/api/rpc';
 import { User, UserRole } from '../lib/types';
 import { queryClient } from '../lib/queryClient';
 import { startRealtimeStatusStore, stopRealtimeStatusStore } from '../lib/realtimeStatus';
+import { isRecoveryMode, clearRecoveryMode } from '../lib/auth';
 import type { Database } from '../lib/database.types';
-
 export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 export type InstitutionRow = Database['public']['Tables']['institutions']['Row'];
 
@@ -26,6 +26,7 @@ interface AuthContextType {
   isVerified: boolean;
   loading: boolean;
   isAuthenticated: boolean;
+  recoveryMode: boolean;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setRole: (role: UserRole) => void;
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [institutionName, setInstitutionName] = useState<string | null>(null);
   const [verifiedQualificationIds, setVerifiedQualificationIds] = useState<string[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-
+  const [recoveryMode, setRecoveryModeState] = useState<boolean>(() => isRecoveryMode());
   const loadUserContext = useCallback(async (currentSession: Session | null) => {
     if (!currentSession) {
       setProfile(null);
@@ -127,6 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (event === 'SIGNED_OUT') {
         queryClient.clear();
         stopRealtimeStatusStore();
+        clearRecoveryMode();
+        setRecoveryModeState(false);
       } else if (s) {
         startRealtimeStatusStore();
       }
@@ -151,13 +154,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     queryClient.clear();
     stopRealtimeStatusStore();
+    clearRecoveryMode();
+    setRecoveryModeState(false);
     setSession(null);
     setProfile(null);
     setInstitution(null);
     setInstitutionName(null);
     setVerifiedQualificationIds([]);
   }, []);
-
   const role: UserRole = profile?.role === 'institution_admin' ? 'institution' : 'user';
   const isVerified = profile ? profile.verification_status === 'verified' : false;
   const isAuthenticated = session !== null;
@@ -184,6 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isVerified,
         loading,
         isAuthenticated,
+        recoveryMode,
         signOut,
         refresh,
         setRole,

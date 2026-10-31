@@ -1,6 +1,7 @@
 /**
  * src/pages/Landing.tsx
- * EquipSync – Modern Landing Page with Ripple Effect, Bento Grid, and Dynamic Architecture.
+ * EquipSync – Modern Landing Page with Ripple Effect, Bento Grid,
+ * Interactive Tabbed Preview, and FAQ Accordion.
  */
 
 import { Link } from 'react-router-dom';
@@ -21,15 +22,33 @@ import { FloatingMockCards } from '@/features/landing/FloatingMockCards';
 import { WhatIsEquipSync } from '@/features/landing/WhatIsEquipSync';
 import { FeatureMarquee } from '@/features/landing/FeatureMarquee';
 import { BentoGrid } from '@/features/landing/BentoGrid';
+import { InteractivePreview } from '@/features/landing/InteractivePreview';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
 import { useReveal } from '@/features/landing/useReveal';
 import '@/styles/landing.css';
+import '@/styles/entry.css';
 
 export function Landing() {
   const finalCtaRef = useReveal<HTMLDivElement>();
 
   return (
-    <div className="min-h-screen flex flex-col justify-between selection:bg-primary/20 selection:text-primary">
+    <div className="relative min-h-screen flex flex-col justify-between selection:bg-primary/20 selection:text-primary overflow-x-hidden">
       <MarketingNav />
+
+      {/* Decorative Token-Based Gradient Blobs (Transform and Opacity Only) */}
+      <div
+        aria-hidden="true"
+        className="blob-1 absolute top-[12%] -left-32 w-96 h-96 rounded-full bg-primary/20 blur-3xl pointer-events-none z-0"
+      />
+      <div
+        aria-hidden="true"
+        className="blob-2 absolute top-[38%] -right-32 w-96 h-96 rounded-full bg-blue-500/15 blur-3xl pointer-events-none z-0"
+      />
 
       {/* Hero Section with Interactive Water Ripple Effect */}
       <RippleBackground intensity="hero" className="relative isolate pt-14 pb-16 md:pt-24 md:pb-28 bg-primary/[0.02]">
@@ -62,7 +81,7 @@ export function Landing() {
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
-              <a href="#about" className="w-full sm:w-auto">
+              <a href="#how-it-works" className="w-full sm:w-auto">
                 <Button variant="outline" size="lg" className="w-full sm:w-auto gap-2 font-semibold bg-background/60 h-12 px-6">
                   <Compass className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   <span>See how it works</span>
@@ -92,14 +111,72 @@ export function Landing() {
         </div>
       </RippleBackground>
 
-      {/* "What is EquipSync?" 3-Step Section */}
+      {/* 6-Step Workflow Section */}
       <WhatIsEquipSync />
+
+      {/* Interactive "See it in action" Tabbed Preview */}
+      <InteractivePreview />
 
       {/* Dual-Track Feature Pills Marquee */}
       <FeatureMarquee />
 
       {/* 6-Tile Bento Grid Section */}
       <BentoGrid />
+
+      {/* FAQ Accordion Section */}
+      <section id="faq" className="py-16 md:py-24 border-b border-border/60 bg-muted/10 scroll-mt-20">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 space-y-8">
+          <div className="text-center space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">
+              Got Questions?
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-foreground tracking-tight">
+              Frequently asked questions
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+              Transparent answers on institutional governance, cryptographic custody, and member access.
+            </p>
+          </div>
+
+          <Accordion type="single" collapsible className="w-full surface rounded-2xl p-4 sm:p-6 border border-border/80 shadow-xs">
+            <AccordionItem value="item-1">
+              <AccordionTrigger className="text-sm font-bold text-foreground text-left">
+                How does EquipSync ensure equipment condition integrity?
+              </AccordionTrigger>
+              <AccordionContent className="text-xs text-muted-foreground leading-relaxed">
+                During check-out and check-in, borrowers capture mandatory multi-angle photos directly in browser. Each photo is hashed locally using client-side SHA-256 before upload. Uploads are strictly immutable, paired with server-trusted timestamps, preventing retroactive photo manipulation or disputing condition changes.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-2">
+              <AccordionTrigger className="text-sm font-bold text-foreground text-left">
+                Can external partners or affiliated researchers reserve equipment?
+              </AccordionTrigger>
+              <AccordionContent className="text-xs text-muted-foreground leading-relaxed">
+                Yes. Facility managers configure granular eligibility rules per asset. Resources can permit students, staff, or external affiliates, and require verified prerequisite inductions (such as Laser Safety or Cleanroom Access) before reservation slots unlock.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-3">
+              <AccordionTrigger className="text-sm font-bold text-foreground text-left">
+                What happens when an asset is retired or decommissioned?
+              </AccordionTrigger>
+              <AccordionContent className="text-xs text-muted-foreground leading-relaxed">
+                Retiring an asset automatically cancels all pending and future approved reservations, expires open released slots, cancels active waitlist entries, and issues notifications to affected members. Assets with items currently checked out cannot be retired until safely returned and inspected.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-4">
+              <AccordionTrigger className="text-sm font-bold text-foreground text-left">
+                How is data isolation enforced between different institutions?
+              </AccordionTrigger>
+              <AccordionContent className="text-xs text-muted-foreground leading-relaxed">
+                EquipSync enforces multi-tenancy at the PostgreSQL kernel layer via Row Level Security (RLS). Every table is isolated by institution ID. Unauthenticated clients and members cannot read or access internal resources, audit logs, or custody evidence of another organisation.
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </section>
 
       {/* Final Action Band */}
       <section className="py-16 md:py-24 bg-background">
@@ -140,3 +217,5 @@ export function Landing() {
     </div>
   );
 }
+
+export default Landing;

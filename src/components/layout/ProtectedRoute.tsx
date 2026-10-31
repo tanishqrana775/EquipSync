@@ -1,8 +1,8 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
+import { isRecoveryMode } from '@/lib/auth';
 import { UserRole } from '@/lib/types';
-
 interface ProtectedRouteProps {
   children: React.ReactNode;
   allowedRoles?: UserRole[];
@@ -12,8 +12,7 @@ export function ProtectedRoute({
   children,
   allowedRoles,
 }: ProtectedRouteProps) {
-  const { role, isAuthenticated, loading } = useAuth();
-
+  const { role, isAuthenticated, loading, recoveryMode } = useAuth();
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 bg-background">
@@ -25,6 +24,9 @@ export function ProtectedRoute({
         </div>
       </div>
     );
+  }
+  if (isRecoveryMode()) {
+    return <Navigate to="/forgot-password" replace />;
   }
 
   if (!isAuthenticated) {

@@ -131,6 +131,8 @@ export function InstitutionSearchAutocomplete({
       <div className="relative">
         <Input
           type="text"
+          role="combobox"
+          aria-controls="institution-search-listbox"
           value={query}
           onChange={handleInputChange}
           onFocus={() => {
@@ -173,8 +175,8 @@ export function InstitutionSearchAutocomplete({
       {/* Suggestion Dropdown Listbox */}
       {isOpen && (
         <div
+          id="institution-search-listbox"
           role="listbox"
-          className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-border/90 bg-card p-1 shadow-xl backdrop-blur-md animate-fade-in text-xs divide-y divide-border/40"
         >
           {suggestions.length === 0 && query.trim().length >= 3 && !isLoading ? (
             <div className="p-3 text-center text-muted-foreground text-[11px]">

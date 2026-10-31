@@ -935,6 +935,38 @@ export type Database = {
           },
         ]
       }
+      resource_categories: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          institution_id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          institution_id: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          institution_id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "resource_categories_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_qualifications: {
         Row: {
           created_at: string
@@ -1264,6 +1296,25 @@ export type Database = {
         }
       }
       current_institution_id: { Args: never; Returns: string }
+      ensure_category: {
+        Args: {
+          p_name: string
+        }
+        Returns: string
+      }
+      retire_resource: {
+        Args: {
+          p_reason?: string | null
+          p_resource_id: string
+        }
+        Returns: Database["public"]["Tables"]["resources"]["Row"]
+      }
+      reactivate_resource: {
+        Args: {
+          p_resource_id: string
+        }
+        Returns: Database["public"]["Tables"]["resources"]["Row"]
+      }
       decide_booking: {
         Args: { p_approve: boolean; p_booking_id: string; p_note?: string }
         Returns: {

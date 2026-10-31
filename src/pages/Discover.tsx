@@ -67,21 +67,23 @@ export function Discover() {
   const { requestBooking, joinWaitlist } = useBookings();
   const { isVerified, verifiedQualificationIds } = useAuth();
 
-  const categories = [
-    'All',
-    'Laptops',
-    'DSLR Cameras',
-    'Lab Equipment',
-    'Seminar Halls',
-    'Projectors',
-    'Classrooms',
-    'Sports Equipment',
-    'Books & Reference',
-  ];
-
   const filteredResources = useMemo(() => {
     return resources.filter((r) => r.status !== 'retired');
   }, [resources]);
+
+  const dynamicCategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of filteredResources) {
+      if (r.category) {
+        counts[r.category] = (counts[r.category] || 0) + 1;
+      }
+    }
+    const sorted = Object.keys(counts).sort((a, b) => a.localeCompare(b));
+    return [
+      { name: 'All', count: filteredResources.length },
+      ...sorted.map((name) => ({ name, count: counts[name] })),
+    ];
+  }, [filteredResources]);
   const handleReserve = async (res: Resource) => {
     try {
       setBookingState('submitting');
@@ -165,17 +167,17 @@ export function Discover() {
 
         {/* Categories Carousel */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-          {categories.map((cat) => (
+          {dynamicCategories.map(({ name, count }) => (
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              key={name}
+              onClick={() => setSelectedCategory(name)}
               className={`rounded-xl px-3 py-1.5 font-medium transition-all shrink-0 ${
-                selectedCategory === cat
+                selectedCategory === name
                   ? 'bg-primary text-primary-foreground shadow-xs font-semibold'
                   : 'bg-secondary/60 text-muted-foreground hover:bg-accent hover:text-foreground'
               }`}
             >
-              {cat}
+              {name} ({count})
             </button>
           ))}
         </div>

@@ -29,6 +29,8 @@ import { LiveBadge } from '@/components/shared/LiveBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { PasswordRecoveryWizard } from '@/features/auth/PasswordRecoveryWizard';
+import '@/styles/sidebar.css';
 import {
   Tooltip,
   TooltipTrigger,
@@ -59,8 +61,7 @@ export function AppSidebar() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [isResettingPassword, setIsResettingPassword] = useState(false);
-
+  const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false);
   const isCollapsed = !isMobile && !open;
 
   const handleNavClick = () => {
@@ -69,18 +70,6 @@ export function AppSidebar() {
     }
   };
 
-  const handlePasswordReset = async () => {
-    if (!user.email) return;
-    try {
-      setIsResettingPassword(true);
-      await sendPasswordReset(user.email);
-      toast.success('Password reset link sent to your email.');
-    } catch (err: unknown) {
-      toastError(err, 'Failed to send password reset email');
-    } finally {
-      setIsResettingPassword(false);
-    }
-  };
 
   const isInstitution = role === 'institution';
 
@@ -90,7 +79,6 @@ export function AppSidebar() {
           label: 'Organisation Overview',
           to: '/app/institution',
           icon: LayoutDashboard,
-          badge: 'Live',
         },
         {
           label: 'Resource Management',
@@ -98,7 +86,7 @@ export function AppSidebar() {
           icon: Boxes,
         },
         {
-          label: 'Equipment Catalog',
+          label: 'Equipment Catalogue',
           to: '/app/discover',
           icon: Compass,
         },
@@ -177,8 +165,8 @@ export function AppSidebar() {
         <div className={cn('transition-all', isCollapsed ? 'p-2 text-center' : 'px-4 py-3')}>
           <div
             className={cn(
-              'flex items-center rounded-xl border text-xs font-medium',
-              isCollapsed ? 'justify-center p-2' : 'justify-between px-3 py-2',
+              'flex items-center rounded-xl text-xs font-medium',
+              isCollapsed ? 'justify-center h-10 w-10 mx-auto' : 'border justify-between px-3 py-2',
               isInstitution
                 ? 'bg-primary/5 border-primary/20 text-primary'
                 : 'bg-emerald-500/5 border-emerald-500/20 text-emerald-700 dark:text-emerald-300'
@@ -186,9 +174,9 @@ export function AppSidebar() {
           >
             <div className={cn('flex items-center min-w-0', isCollapsed ? 'justify-center' : 'gap-2')}>
               {isInstitution ? (
-                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                <Building2 className="h-4 w-4 shrink-0 text-current" />
               ) : (
-                <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+                <GraduationCap className="h-4 w-4 shrink-0 text-current" />
               )}
               {!isCollapsed && (
                 <span className="capitalize font-semibold truncate min-w-0">{role} Workspace</span>
@@ -205,7 +193,6 @@ export function AppSidebar() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate min-w-0">
                   Platform Navigation
                 </p>
-                <LiveBadge className="shrink-0" />
               </div>
             )}
             <nav className="space-y-1">
@@ -219,7 +206,7 @@ export function AppSidebar() {
                     onClick={handleNavClick}
                     className={({ isActive }) =>
                       cn(
-                        'flex items-center rounded-xl text-sm font-medium transition-all duration-200',
+                        'relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                         isCollapsed ? 'justify-center h-10 w-10 mx-auto px-0' : 'justify-between px-3 py-2.5',
                         isActive
                           ? 'bg-primary text-primary-foreground shadow-sm font-semibold'
@@ -229,30 +216,33 @@ export function AppSidebar() {
                   >
                     {({ isActive }) => (
                       <>
-                        <div className={cn('flex items-center gap-3', isCollapsed && 'justify-center')}>
+                        <div className={cn('flex items-center gap-3', isCollapsed ? 'justify-center w-full h-full' : '')}>
                           <Icon
                             className={cn(
-                              'h-4 w-4 shrink-0',
-                              isActive ? 'text-primary-foreground' : 'text-muted-foreground'
+                              'h-4 w-4 shrink-0 text-current transition-colors'
                             )}
                           />
                           {!isCollapsed && <span className="truncate">{item.label}</span>}
                         </div>
                         {!isCollapsed && item.badge && (
-                          item.badge === 'Live' ? (
-                            <LiveBadge className="ml-2 shrink-0" />
-                          ) : (
-                            <span
-                              className={cn(
-                                'rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0',
-                                isActive
-                                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                                  : 'bg-secondary text-secondary-foreground'
-                              )}
-                            >
-                              {item.badge}
-                            </span>
-                          )
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0',
+                              isActive
+                                ? 'bg-primary-foreground/20 text-primary-foreground'
+                                : 'bg-secondary text-secondary-foreground'
+                            )}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
+                        {isCollapsed && item.badge && (
+                          <span
+                            className={cn(
+                              'absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full',
+                              isActive ? 'bg-primary-foreground ring-1 ring-primary' : 'bg-primary'
+                            )}
+                          />
                         )}
                       </>
                     )}
@@ -480,12 +470,15 @@ export function AppSidebar() {
               type="button"
               variant="outline"
               size="sm"
-              disabled={isResettingPassword || !user.email}
-              onClick={handlePasswordReset}
+              disabled={!user.email}
+              onClick={() => {
+                setSettingsOpen(false);
+                setChangePasswordDialogOpen(true);
+              }}
               className="w-full sm:w-auto gap-1.5 text-xs font-semibold"
             >
               <KeyRound className="h-3.5 w-3.5" />
-              <span>{isResettingPassword ? 'Sending...' : 'Change password'}</span>
+              <span>Change password</span>
             </Button>
 
             <Button
@@ -502,6 +495,18 @@ export function AppSidebar() {
               <span>Sign out</span>
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Password Dialog hosting PasswordRecoveryWizard in dialog mode */}
+      <Dialog open={changePasswordDialogOpen} onOpenChange={setChangePasswordDialogOpen}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden border-border/80">
+          <PasswordRecoveryWizard
+            mode="dialog"
+            initialEmail={user.email}
+            onCancel={() => setChangePasswordDialogOpen(false)}
+            onSuccess={() => setChangePasswordDialogOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </>

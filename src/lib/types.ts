@@ -31,7 +31,8 @@ export type ResourceStatus =
   | 'in-use'
   | 'maintenance'
   | 'unavailable'
-  | 'retired';
+  | 'retired'
+  | 'active';
 
 export type ResourceCondition =
   | 'excellent'
@@ -78,6 +79,8 @@ export interface Resource {
   requirements: string[];
   totalQuantity: number;
   availableQuantity: number;
+  isAvailable?: boolean;
+  is_available?: boolean;
   utilisationRate: number; // 0 - 100 percentage
   specifications: Record<string, string>;
   createdAt: string;

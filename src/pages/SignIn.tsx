@@ -6,6 +6,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, Mail, Lock, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/shared/PasswordInput';
 import { useEffect } from 'react';
 import { signIn, resendVerification } from '@/lib/auth';
 import {
@@ -29,7 +30,7 @@ import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid campus email address'),
+  email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
@@ -97,7 +98,7 @@ export function SignIn() {
   };
   return (
     <div className="w-full max-w-md animate-fade-in">
-      <Card className="surface border-border/80 shadow-xl">
+      <Card className="surface border-border/80 shadow-xl backdrop-blur-md bg-card/85 rounded-2xl">
         <CardHeader className="space-y-1 text-center pb-4">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2">
             <ShieldCheck className="h-6 w-6" />
@@ -125,8 +126,8 @@ export function SignIn() {
                       <div className="relative">
                         <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                          placeholder="name@university.edu"
-                          className="pl-9"
+                          aria-label="Work or Institutional Email"
+                          className="pl-9 hover:border-primary/40 focus-visible:ring-1 transition-colors"
                           {...field}
                         />
                       </div>
@@ -150,22 +151,18 @@ export function SignIn() {
                       </Link>
                     </div>
                     <FormControl>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-9"
-                          {...field}
-                        />
-                      </div>
+                      <PasswordInput
+                        aria-label="Password"
+                        className="hover:border-primary/40 focus-visible:ring-1 transition-colors"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <Button type="submit" disabled={isSubmitting} className="w-full gap-2 font-semibold shadow-sm mt-2">
+              <Button type="submit" disabled={isSubmitting} className="w-full gap-2 font-semibold shadow-sm mt-2 hover:-translate-y-px active:scale-[0.98] transition-all">
                 <span>{isSubmitting ? 'Signing in...' : 'Continue to Dashboard'}</span>
                 <ArrowRight className="h-4 w-4" />
               </Button>

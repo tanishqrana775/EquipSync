@@ -1,0 +1,57 @@
+/* src/styles/print.css - Dedicated Print Portal Styles */
+
+@page {
+  margin: 12mm;
+}
+
+@media print {
+  /* Force exact color reproduction */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset body and Radix scroll lock margin/padding */
+  html,
+  body,
+  body[data-scroll-locked] {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Hide root app chrome, sidebar, dialogs, overlays */
+  #root,
+  [role="dialog"],
+  [data-radix-portal],
+  .fixed.inset-0 {
+    display: none !important;
+  }
+
+  /* Show only the dedicated print portal container */
+  #qr-print-portal {
+    display: flex !important;
+    visibility: visible !important;
+    min-height: 100vh !important;
+    width: 100% !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  #qr-print-portal * {
+    visibility: visible !important;
+  }
+
+  .print-dashed-border {
+    border-style: solid !important;
+  }
+}
+
+@media screen {
+  #qr-print-portal {
+    display: none !important;
+  }
+}

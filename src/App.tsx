@@ -5,6 +5,7 @@ import { Register } from '@/pages/Register';
 import { ForgotPassword } from '@/pages/ForgotPassword';
 import { UpdatePassword } from '@/pages/UpdatePassword';
 import { MyBookings } from '@/pages/MyBookings';
+import { DisputeResolution } from '@/pages/DisputeResolution';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
 import { UserDashboard } from '@/pages/UserDashboard';
 import { ResourceManagement } from '@/pages/ResourceManagement';
@@ -18,7 +19,14 @@ import { Toaster } from '@/components/ui/sonner';
 import { useAuth } from '@/providers/AuthProvider';
 
 function AppRedirect() {
-  const { role } = useAuth();
+  const { role, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center p-6">
+        <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
   return <Navigate to={role === 'institution' ? '/app/institution' : '/app/user'} replace />;
 }
 
@@ -69,10 +77,17 @@ export function App() {
           <Route index element={<AppRedirect />} />
           <Route path="institution" element={<InstitutionDashboard />} />
           <Route path="institution/resources" element={<ResourceManagement />} />
+          <Route path="institution/disputes" element={<DisputeResolution />} />
           <Route path="user" element={<UserDashboard />} />
-          <Route path="bookings" element={<MyBookings />} />
           <Route path="discover" element={<Discover />} />
+          <Route path="bookings" element={<MyBookings />} />
           <Route path="bookings/:id" element={<BookingCustody />} />
+          {/* Legacy path redirects within /app */}
+          <Route path="dashboard" element={<AppRedirect />} />
+          <Route path="my-bookings" element={<Navigate to="/app/bookings" replace />} />
+          <Route path="catalog" element={<Navigate to="/app/discover" replace />} />
+          {/* Nested /app catch-all: redirects to user dashboard, never to "/" */}
+          <Route path="*" element={<AppRedirect />} />
         </Route>
 
         {/* 404 Catch-all */}

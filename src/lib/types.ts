@@ -30,10 +30,31 @@ export type ResourceStatus =
   | 'reserved'
   | 'in-use'
   | 'maintenance'
-  | 'unavailable';
+  | 'unavailable'
+  | 'retired';
 
-export type ResourceCondition = 'excellent' | 'good' | 'fair';
+export type ResourceCondition =
+  | 'excellent'
+  | 'good'
+  | 'minor_wear'
+  | 'minor_damage'
+  | 'damaged'
+  | 'major_damage'
+  | 'missing_parts'
+  | 'non_functional'
+  | '-';
 
+export const CONDITION_LABELS: Record<ResourceCondition, string> = {
+  excellent: 'Excellent',
+  good: 'Good',
+  minor_wear: 'Minor Wear (Safe)',
+  minor_damage: 'Minor Damage',
+  damaged: 'Damaged',
+  major_damage: 'Major Damage',
+  missing_parts: 'Missing Parts',
+  non_functional: 'Non-functional',
+  '-': '-',
+};
 export interface Resource {
   id: string;
   title: string;
@@ -50,6 +71,7 @@ export interface Resource {
   imageUrl: string;
   serialNumber: string;
   tagId: string;
+  qrIdentifier: string;
   maxBookingDurationHours: number;
   requiresFacultyApproval: boolean;
   depositRequired: boolean;

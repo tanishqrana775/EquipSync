@@ -15,7 +15,11 @@ import type { Database } from './database.types';
 // Derived row types from the generated schema
 // ---------------------------------------------------------------------------
 export type Profile      = Database['public']['Tables']['profiles']['Row'];
-export type Institution  = Pick<Database['public']['Views']['institution_directory']['Row'], 'id' | 'name' | 'type'>;
+export interface Institution {
+  id: string;
+  name: string;
+  type: string;
+}
 
 // ---------------------------------------------------------------------------
 // Sign-up: institution admin (creates institution + admin profile)
@@ -184,16 +188,17 @@ export async function getMyProfile(): Promise<Profile> {
 // ---------------------------------------------------------------------------
 
 /**
- * Lists all institutions for the registration form.
- * Reads from the `institution_directory` view which is granted to anon.
+ * Searches institutions for the registration form via the SECURITY DEFINER RPC.
  */
-export async function listInstitutions(): Promise<Institution[]> {
-  return unwrap(
-    await supabase
-      .from('institution_directory')
-      .select('id, name, type')
-      .order('name')
-  ) as Institution[];
+export async function searchInstitutions(query: string): Promise<Institution[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 3) {
+    return [];
+  }
+  const rows = unwrap<Institution[]>(
+    await supabase.rpc('search_institutions', { p_query: trimmed })
+  );
+  return rows ?? [];
 }
 
 // ---------------------------------------------------------------------------

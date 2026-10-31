@@ -15,12 +15,12 @@ import { StatCard } from '@/components/shared/StatCard';
 import { GlassCard } from '@/components/shared/GlassCard';
 import { ActivityTimeline } from '@/components/shared/ActivityTimeline';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { LiveBadge } from '@/components/shared/LiveBadge';
 import { Button } from '@/components/ui/button';
 import { useResources } from '@/hooks/useResources';
 import { useBookings } from '@/hooks/useBookings';
 import { useInstitutionStats } from '@/hooks/useInstitutionStats';
-import { Check, X, UserCheck } from 'lucide-react';
-
+import { Check, X, UserCheck, Scale } from 'lucide-react';
 export function InstitutionDashboard() {
   const { resources, loading: resourcesLoading } = useResources();
   const { bookings, loading: bookingsLoading, decideBooking } = useBookings({ institutionWide: true });
@@ -44,6 +44,12 @@ export function InstitutionDashboard() {
             <span>Equipment Catalog</span>
           </Button>
         </Link>
+        <Link to="/app/institution/disputes">
+          <Button variant="outline" size="sm" className="gap-2 font-medium bg-card text-destructive hover:bg-destructive/10">
+            <Scale className="h-4 w-4 text-destructive" />
+            <span>Disputes</span>
+          </Button>
+        </Link>
       </PageHeader>
       {/* Primary KPI Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -51,10 +57,8 @@ export function InstitutionDashboard() {
           title="Cataloged Assets"
           value={stats.totalResources}
           icon={Boxes}
-          change="+8 this quarter"
-          changeType="positive"
           tone="primary"
-          description="Distributed across faculty hubs"
+          description="Distributed across facilities"
         />
         <StatCard
           title="Active Checkouts"
@@ -69,8 +73,6 @@ export function InstitutionDashboard() {
           title="Fleet Utilisation"
           value={`${stats.utilisationRate}%`}
           icon={TrendingUp}
-          change="+4.2% vs last term"
-          changeType="positive"
           tone="info"
           description="Target efficiency > 70%"
         />
@@ -78,8 +80,8 @@ export function InstitutionDashboard() {
           title="Pending Approvals"
           value={stats.pendingApprovals}
           icon={AlertTriangle}
-          change="Requires faculty review"
-          changeType="neutral"
+          change={stats.pendingApprovals > 0 ? "Requires owner review" : "All reviewed"}
+          changeType={stats.pendingApprovals > 0 ? "negative" : "neutral"}
           tone="warning"
           description="High-tier equipment requests"
         />
@@ -165,10 +167,13 @@ export function InstitutionDashboard() {
 
         {/* Live Custody Timeline & Quick Auditing */}
         <div className="space-y-4">
-          <div>
-            <h3 className="text-base font-bold text-foreground">
-              Live Activity Audit
-            </h3>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground">
+                Activity Audit Feed
+              </h3>
+              <LiveBadge />
+            </div>
             <p className="text-xs text-muted-foreground">
               Real-time checkout, return & inspection events
             </p>

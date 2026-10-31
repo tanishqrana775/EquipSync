@@ -60,7 +60,7 @@ export function ForgotPassword() {
 
   return (
     <div className="w-full max-w-md animate-fade-in">
-      <Card className="surface border-border/80 shadow-xl">
+      <Card className="surface border-border/80 shadow-xl backdrop-blur-md bg-card/85 rounded-2xl">
         <CardHeader className="space-y-1 text-center pb-4">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2">
             <KeyRound className="h-6 w-6" />
@@ -93,7 +93,7 @@ export function ForgotPassword() {
                       <FormControl>
                         <div className="relative">
                           <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="name@organisation.edu" className="pl-9" {...field} />
+                          <Input aria-label="Work or Institutional Email" className="pl-9 hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
                         </div>
                       </FormControl>
                       <FormMessage />
@@ -101,7 +101,7 @@ export function ForgotPassword() {
                   )}
                 />
 
-                <Button type="submit" disabled={isSubmitting} className="w-full font-semibold shadow-sm mt-2">
+                <Button type="submit" disabled={isSubmitting} className="w-full font-semibold shadow-sm mt-2 hover:-translate-y-px active:scale-[0.98] transition-all">
                   <span>{isSubmitting ? 'Sending Link...' : 'Send Recovery Link'}</span>
                 </Button>
               </form>

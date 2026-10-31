@@ -43,17 +43,28 @@ export function StatusBadge({
         };
       case 'overdue':
       case 'cancelled':
+        return {
+          bg: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800/40',
+          dot: 'bg-red-500',
+          label: normalized === 'overdue' ? 'Overdue Return' : 'Cancelled',
+        };
       case 'unavailable':
         return {
           bg: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800/40',
           dot: 'bg-red-500',
-          label: normalized === 'overdue' ? 'Overdue Return' : normalized === 'cancelled' ? 'Cancelled' : 'Unavailable',
+          label: 'Unavailable',
         };
       case 'maintenance':
         return {
-          bg: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800/40',
-          dot: 'bg-purple-500',
-          label: 'In Maintenance',
+          bg: 'bg-amber-500/10 text-amber-700 border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/40',
+          dot: 'bg-amber-500',
+          label: 'Under maintenance',
+        };
+      case 'retired':
+        return {
+          bg: 'bg-muted text-muted-foreground border-border/80 dark:bg-muted/40 dark:text-muted-foreground dark:border-border',
+          dot: 'bg-muted-foreground',
+          label: 'Retired',
         };
       default:
         return {

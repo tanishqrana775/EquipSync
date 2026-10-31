@@ -22,6 +22,7 @@ import {
 import type { Database } from '../database.types';
 
 type DbResource = Database['public']['Tables']['resources']['Row'] & {
+  institutions?: { name: string } | null;
   eligibility_rules?: Database['public']['Tables']['eligibility_rules']['Row'] | null;
   resource_accessories?: Database['public']['Tables']['resource_accessories']['Row'][];
   resource_availability_windows?: Database['public']['Tables']['resource_availability_windows']['Row'][];
@@ -82,15 +83,17 @@ export function mapDbResourceToUi(row: DbResource, utilisationPct?: number): Res
     .map((rq) => rq.qualifications?.name)
     .filter((name): name is string => typeof name === 'string');
 
-  const loc = row.location || 'Campus';
+  const loc = row.location || '-';
   const locParts = loc.split('–').map((s) => s.trim());
-  const building = locParts[0] || 'Main Campus';
-  const room = locParts[1] || 'Room 101';
+  const building = locParts[0] || '-';
+  const room = locParts[1] || '-';
 
   let status: ResourceStatus = 'available';
-  if (row.status === 'maintenance') {
+  if (row.status === 'retired') {
+    status = 'retired';
+  } else if (row.status === 'maintenance') {
     status = 'maintenance';
-  } else if (row.status === 'retired' || !row.is_available) {
+  } else if (!row.is_available) {
     status = 'unavailable';
   }
 
@@ -104,29 +107,32 @@ export function mapDbResourceToUi(row: DbResource, utilisationPct?: number): Res
     specs['Accessories'] = accessories.map((a) => a.name).join(', ');
   }
 
+  const orgName = row.institutions?.name || '-';
+
   return {
     id: row.id,
     title: row.name,
     category: (row.category as ResourceCategory) || 'Lab Equipment',
-    description: row.description || 'Verified campus equipment available for academic reservations.',
+    description: row.description || '-',
     location: loc,
     building,
     room,
-    ownerDepartment: 'Campus Facility',
-    custodianName: 'Campus Custodian',
-    custodianEmail: 'equipment@campus.edu',
+    ownerDepartment: orgName,
+    custodianName: orgName,
+    custodianEmail: '-',
     status,
-    condition: 'excellent',
+    condition: '-',
     imageUrl: resolveStorageUrl(row.image_path, 'resource-images'),
-    serialNumber: row.asset_tag || 'SN-UNKNOWN',
+    serialNumber: row.asset_tag || '-',
     tagId: row.asset_tag || row.id.slice(0, 8).toUpperCase(),
+    qrIdentifier: row.qr_identifier || '',
     maxBookingDurationHours: rules?.max_duration_minutes ? Math.round(rules.max_duration_minutes / 60) : 24,
     requiresFacultyApproval: rules?.requires_approval ?? true,
     depositRequired: false,
     requirements: reqQuals,
     totalQuantity: 1,
     availableQuantity: row.is_available ? 1 : 0,
-    utilisationRate: utilisationPct !== undefined ? Math.round(utilisationPct) : 65,
+    utilisationRate: utilisationPct !== undefined ? Math.round(utilisationPct) : 0,
     specifications: specs,
     createdAt: row.created_at,
   };

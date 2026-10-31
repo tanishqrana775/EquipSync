@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Boxes,
   Search,
@@ -8,12 +9,12 @@ import {
   MoreHorizontal,
   ExternalLink,
   ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 import { ColumnDef } from '@tanstack/react-table';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { UtilisationBar } from '@/components/shared/UtilisationBar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -39,9 +40,22 @@ import { compressImage } from '@/lib/custody';
 import { supabase } from '@/lib/supabase';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
-import { Upload, ImageIcon, X } from 'lucide-react';
+import { Upload, ImageIcon, X, QrCode, Printer, Download, RefreshCw } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { regenerateResourceQr } from '@/lib/api/rpc';
+import '@/styles/print.css';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Resource, ResourceCategory } from '@/lib/types';
-
 export function ResourceManagement() {
   const {
     resources,
@@ -64,6 +78,8 @@ export function ResourceManagement() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [qrModalResource, setQrModalResource] = useState<Resource | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const categories = ['All', 'Laptops', 'DSLR Cameras', 'Lab Equipment', 'Seminar Halls', 'Projectors', 'Classrooms', 'Sports Equipment', 'Academic Books'];
 
   const handleImageSelect = (file: File | null) => {
@@ -186,31 +202,10 @@ export function ResourceManagement() {
     {
       accessorKey: 'availableQuantity',
       header: 'Availability',
-      cell: ({ row }) => {
-        const r = row.original;
-        return (
-          <span className="text-xs font-semibold text-foreground">
-            {r.availableQuantity} / {r.totalQuantity} units
-          </span>
-        );
-      },
-    },
-    {
-      accessorKey: 'utilisationRate',
-      header: 'Utilisation',
       cell: ({ row }) => (
-        <div className="w-28">
-          <UtilisationBar percentage={row.original.utilisationRate} />
-        </div>
-      ),
-    },
-    {
-      accessorKey: 'condition',
-      header: 'Condition',
-      cell: ({ row }) => (
-        <Badge variant="outline" className="text-[10px] capitalize font-medium">
-          {row.original.condition}
-        </Badge>
+        <span className="text-xs font-semibold text-foreground">
+          {row.original.status === 'available' ? 'Available' : 'Unavailable'}
+        </span>
       ),
     },
     {
@@ -226,6 +221,13 @@ export function ResourceManagement() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel className="text-xs">Actions</DropdownMenuLabel>
+              <DropdownMenuItem
+                onClick={() => setQrModalResource(row.original)}
+                className="text-xs cursor-pointer gap-1.5"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>QR Asset Label</span>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => toggleAvailability(row.original.id, row.original.status !== 'available')}
                 className="text-xs cursor-pointer"
@@ -399,6 +401,176 @@ export function ResourceManagement() {
         pageSize={8}
         emptyMessage="No equipment resources matched your filter criteria."
       />
+
+      {/* QR Label Dialog */}
+      {qrModalResource && (
+        <Dialog open={!!qrModalResource} onOpenChange={(open) => !open && setQrModalResource(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2">
+                <QrCode className="h-4 w-4 text-primary" />
+                <span>Physical Asset Tag Label</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Print or download the scannable QR label for {qrModalResource.title}.
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* Printable QR Card or Missing Warning */}
+            {qrModalResource.qrIdentifier ? (
+              <div
+                id="qr-print-area"
+                className="p-6 bg-white rounded-2xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center space-y-3 text-black my-2 shadow-xs"
+              >
+                <h3 className="text-sm font-bold text-center tracking-tight text-gray-900">
+                  {qrModalResource.title}
+                </h3>
+                <div className="p-2 bg-white rounded-xl shadow-xs">
+                  <QRCodeSVG
+                    id="qr-svg-label"
+                    value={qrModalResource.qrIdentifier}
+                    size={240}
+                    level="H"
+                    includeMargin
+                  />
+                </div>
+                <span className="font-mono text-xs font-black tracking-widest text-gray-800">
+                  {qrModalResource.qrIdentifier}
+                </span>
+                <span className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">
+                  {qrModalResource.tagId} • {qrModalResource.location}
+                </span>
+              </div>
+            ) : (
+              <div className="p-6 bg-muted/40 rounded-2xl border border-dashed border-border flex flex-col items-center justify-center space-y-2 text-center my-4">
+                <AlertCircle className="h-6 w-6 text-amber-500" />
+                <p className="text-sm font-semibold text-foreground">
+                  This resource has no QR identifier yet
+                </p>
+                <p className="text-xs text-muted-foreground max-w-xs">
+                  Click "Regenerate QR" below to assign an encrypted physical tracking tag.
+                </p>
+              </div>
+            )}
+            <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isRegenerating}
+                    className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                    <span>Regenerate QR</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Regenerate Asset QR Tag?</AlertDialogTitle>
+                    <AlertDialogDescription className="text-xs leading-relaxed">
+                      Warning: Any previously printed QR labels for this equipment will permanently stop working. The new identifier must be printed and attached.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          setIsRegenerating(true);
+                          const newQr = await regenerateResourceQr(qrModalResource.id);
+                          setQrModalResource({ ...qrModalResource, qrIdentifier: newQr });
+                          toast.success('New QR identifier generated');
+                        } catch (err: unknown) {
+                          const errMsg =
+                            err && typeof err === 'object' && 'message' in err
+                              ? String((err as { message?: unknown }).message)
+                              : String(err);
+                          if (errMsg.includes('schema cache') || errMsg.includes('Could not find the function')) {
+                            toast.error('The backend is missing a recent update. Contact the administrator.');
+                          } else {
+                            toastError(err, 'Failed to regenerate QR');
+                          }
+                        } finally {
+                          setIsRegenerating(false);
+                        }
+                      }}
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground font-semibold"
+                    >
+                      Regenerate
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
+              <div className="flex gap-2 sm:ml-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!qrModalResource.qrIdentifier}
+                  onClick={() => {
+                    const svg = document.getElementById('qr-svg-label');
+                    if (!svg) return;
+                    const svgData = new XMLSerializer().serializeToString(svg);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 512;
+                    canvas.height = 512;
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    img.onload = () => {
+                      ctx?.drawImage(img, 0, 0, 512, 512);
+                      const a = document.createElement('a');
+                      a.download = `${qrModalResource.tagId}_qr.png`;
+                      a.href = canvas.toDataURL('image/png');
+                      a.click();
+                    };
+                    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+                  }}
+                  className="text-xs gap-1.5"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>PNG</span>
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={!qrModalResource.qrIdentifier}
+                  onClick={() => window.print()}
+                  className="text-xs font-semibold gap-1.5"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Print Label</span>
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Dedicated Print Portal into document.body */}
+      {qrModalResource && qrModalResource.qrIdentifier && createPortal(
+        <div id="qr-print-portal" aria-hidden="true">
+          <div className="w-[360px] p-8 bg-white rounded-2xl border-2 border-black flex flex-col items-center justify-center space-y-3 text-black text-center shadow-none">
+            <h2 className="text-base font-bold tracking-tight text-black">
+              {qrModalResource.title}
+            </h2>
+            <div className="p-2 bg-white">
+              <QRCodeSVG
+                value={qrModalResource.qrIdentifier}
+                size={220}
+                level="H"
+                includeMargin
+              />
+            </div>
+            <span className="font-mono text-sm font-black tracking-widest text-black">
+              {qrModalResource.qrIdentifier}
+            </span>
+            <span className="text-xs text-gray-700 uppercase tracking-wider font-semibold">
+              {qrModalResource.tagId} • {qrModalResource.location}
+            </span>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

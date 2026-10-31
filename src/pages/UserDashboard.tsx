@@ -19,40 +19,30 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { StatCard } from '@/components/shared/StatCard';
 import { GlassCard } from '@/components/shared/GlassCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { LiveBadge } from '@/components/shared/LiveBadge';
 import { ResourceThumb } from '@/components/shared/ResourceThumb';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/providers/AuthProvider';
 import { useBookings } from '@/hooks/useBookings';
 import { useResources } from '@/hooks/useResources';
-import { listInstitutions, Institution } from '@/lib/auth';
+import { Institution } from '@/lib/auth';
 import { setMemberInstitution } from '@/lib/api/rpc';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
+import { InstitutionSearchAutocomplete } from '@/components/shared/InstitutionSearchAutocomplete';
 
 export function UserDashboard() {
   const { user, profile, refresh } = useAuth();
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
-  const [selectedInst, setSelectedInst] = useState('');
+  const [selectedInstObj, setSelectedInstObj] = useState<Institution | null>(null);
   const [isJoining, setIsJoining] = useState(false);
 
-  useEffect(() => {
-    if (profile && !profile.institution_id) {
-      void listInstitutions().then((data) => {
-        if (data && data.length > 0) {
-          setInstitutions(data);
-          setSelectedInst(data[0].id ?? '');
-        }
-      });
-    }
-  }, [profile]);
-
   const handleJoinOrg = async () => {
-    if (!selectedInst) return;
+    if (!selectedInstObj) return;
     try {
       setIsJoining(true);
-      await setMemberInstitution(selectedInst);
+      await setMemberInstitution(selectedInstObj.id);
       await refresh();
       toast.success('Joined organisation successfully!');
     } catch (err) {
@@ -123,19 +113,12 @@ export function UserDashboard() {
           </div>
           <div className="space-y-3 pt-2 text-left">
             <label className="text-xs font-semibold text-foreground">Select Organisation</label>
-            <select
-              value={selectedInst}
-              onChange={(e) => setSelectedInst(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs"
-            >
-              {institutions.map((inst) => (
-                <option key={inst.id} value={inst.id ?? ''}>
-                  {inst.name} ({inst.type})
-                </option>
-              ))}
-            </select>
+            <InstitutionSearchAutocomplete
+              selectedInstitution={selectedInstObj}
+              onSelect={(inst) => setSelectedInstObj(inst)}
+            />
             <Button
-              disabled={isJoining || !selectedInst}
+              disabled={isJoining || !selectedInstObj}
               onClick={handleJoinOrg}
               className="w-full font-semibold mt-2"
             >
@@ -150,7 +133,7 @@ export function UserDashboard() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Member & Researcher Portal"
+        eyebrow="Member portal"
         title={`Welcome back, ${user.name.split(' ')[0]}`}
         description="Track your current equipment passes, return due dates, and discover specialized gear across shared facilities."
       >
@@ -216,10 +199,10 @@ export function UserDashboard() {
           title="Upcoming Reserved"
           value={userStats.upcomingReservations}
           icon={Calendar}
-          change="Cleared or awaiting faculty"
-          changeType="positive"
+          change={userStats.upcomingReservations > 0 ? "Confirmed reservations" : "No upcoming bookings"}
+          changeType={userStats.upcomingReservations > 0 ? "positive" : "neutral"}
           tone="primary"
-          description="Future academic reservations"
+          description="Upcoming reservations"
         />
         <StatCard
           title="Completed Handovers"
@@ -254,6 +237,7 @@ export function UserDashboard() {
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
                     <StatusBadge status={activeBooking.status} />
+                    <LiveBadge />
                     <span className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1">
                       <Sparkles className="h-3.5 w-3.5" /> Active Custody Pass
                     </span>
@@ -301,7 +285,7 @@ export function UserDashboard() {
           <div className="flex items-center gap-2">
             <Share2 className="h-4 w-4 text-primary" />
             <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Release Approved Reservation to Campus
+              Release Approved Reservation to Community
             </h4>
           </div>
           <p className="text-xs text-muted-foreground">

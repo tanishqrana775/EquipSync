@@ -13,6 +13,7 @@ import {
   getCustodyTimeline,
   inspectReturn as rpcInspectReturn,
   reportIncident as rpcReportIncident,
+  resolveDispute as rpcResolveDispute,
   CustodyTimelineItem,
   IncidentSeverity,
 } from '../lib/api/rpc';
@@ -48,7 +49,7 @@ export function useCustody(bookingId?: string) {
         .select(`
           *,
           resources(
-            id, name, kind, category, image_path, required_photo_slots,
+            id, name, kind, category, image_path, required_photo_slots, qr_identifier,
             resource_accessories(id, name, required)
           ),
           profiles(id, full_name, user_type, avatar_url)
@@ -160,6 +161,7 @@ export function useCustody(bookingId?: string) {
       condition: Database['public']['Enums']['condition_rating'];
       notes: string;
       accessoryChecks?: AccessoryCheckInput[];
+      qrIdentifier: string;
       onProgress?: (slot: string, pct: number) => void;
     }) => {
       if (!bookingData) throw new Error('Booking record not loaded');
@@ -171,6 +173,7 @@ export function useCustody(bookingId?: string) {
         condition: args.condition,
         notes: args.notes,
         accessoryChecks: args.accessoryChecks,
+        qrIdentifier: args.qrIdentifier,
         onPhotoProgress: args.onProgress,
       });
     },
@@ -193,6 +196,7 @@ export function useCustody(bookingId?: string) {
       condition: Database['public']['Enums']['condition_rating'];
       notes: string;
       accessoryChecks?: AccessoryCheckInput[];
+      qrIdentifier: string;
       onProgress?: (slot: string, pct: number) => void;
     }) => {
       if (!bookingData) throw new Error('Booking record not loaded');
@@ -204,6 +208,7 @@ export function useCustody(bookingId?: string) {
         condition: args.condition,
         notes: args.notes,
         accessoryChecks: args.accessoryChecks,
+        qrIdentifier: args.qrIdentifier,
         onPhotoProgress: args.onProgress,
       });
     },
@@ -222,23 +227,55 @@ export function useCustody(bookingId?: string) {
   });
 
   const inspectReturnMutation = useMutation({
-    mutationFn: async (args: { accept: boolean; notes?: string }) => {
+    mutationFn: async (args: {
+      condition: Database['public']['Enums']['condition_rating'];
+      accessoryChecks?: AccessoryCheckInput[];
+      notes?: string;
+    }) => {
       if (!bookingId) throw new Error('No booking specified');
       return await rpcInspectReturn({
         bookingId,
-        accept: args.accept,
+        condition: args.condition,
+        accessoryChecks: args.accessoryChecks,
         notes: args.notes,
       });
     },
-    onSuccess: (_res, vars) => {
+    onSuccess: (res) => {
       void queryClient.invalidateQueries({ queryKey: ['custody_booking', bookingId] });
       void queryClient.invalidateQueries({ queryKey: ['custody_events', bookingId] });
       void queryClient.invalidateQueries({ queryKey: ['custody_timeline', bookingId] });
       void queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      toast.success(vars.accept ? 'Return accepted and booking closed' : 'Return disputed and incident opened');
+      toast.success(
+        res.status === 'closed'
+          ? 'Return accepted and booking closed'
+          : 'Return disputed and incident opened'
+      );
     },
     onError: (err) => {
       toastError(err, 'Failed to inspect return');
+    },
+  });
+
+  const resolveDisputeMutation = useMutation({
+    mutationFn: async (args: {
+      resolution: 'borrower_responsible' | 'no_fault' | 'shared_responsibility';
+      notes: string;
+    }) => {
+      if (!bookingId) throw new Error('No booking specified');
+      return await rpcResolveDispute({
+        bookingId,
+        resolution: args.resolution,
+        notes: args.notes,
+      });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['custody_booking', bookingId] });
+      void queryClient.invalidateQueries({ queryKey: ['custody_timeline', bookingId] });
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      toast.success('Dispute resolved and booking closed.');
+    },
+    onError: (err) => {
+      toastError(err, 'Failed to resolve dispute');
     },
   });
 
@@ -292,6 +329,7 @@ export function useCustody(bookingId?: string) {
     submitCheckOut: checkOutMutation.mutateAsync,
     submitCheckIn: checkInMutation.mutateAsync,
     inspectReturn: inspectReturnMutation.mutateAsync,
+    resolveDispute: resolveDisputeMutation.mutateAsync,
     reportIncident: reportIncidentMutation.mutateAsync,
   };
 }

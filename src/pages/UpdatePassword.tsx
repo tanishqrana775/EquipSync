@@ -11,6 +11,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Lock, ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/shared/PasswordInput';
 import {
   Card,
   CardContent,
@@ -123,7 +124,7 @@ export function UpdatePassword() {
 
   return (
     <div className="w-full max-w-md animate-fade-in">
-      <Card className="surface border-border/80 shadow-xl">
+      <Card className="surface border-border/80 shadow-xl backdrop-blur-md bg-card/85 rounded-2xl">
         <CardHeader className="space-y-1 text-center pb-4">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary mb-2">
             <Lock className="h-6 w-6" />
@@ -146,7 +147,7 @@ export function UpdatePassword() {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">New Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <PasswordInput aria-label="New Password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -160,14 +161,14 @@ export function UpdatePassword() {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Confirm Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <PasswordInput aria-label="Confirm Password" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <Button type="submit" disabled={isSubmitting} className="w-full font-semibold shadow-sm mt-2">
+              <Button type="submit" disabled={isSubmitting} className="w-full font-semibold shadow-sm mt-2 hover:-translate-y-px active:scale-[0.98] transition-all">
                 <span>{isSubmitting ? 'Updating...' : 'Save Password & Sign In'}</span>
                 <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>

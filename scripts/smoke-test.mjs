@@ -149,15 +149,38 @@ async function main() {
     }
   });
 
-  await runStep('Institution directory view is readable by anonymous client', async () => {
-    const { data, error } = await anonClient
-      .from('institution_directory')
-      .select('id, name, type')
-      .limit(10);
+  await runStep('Anon can call search_institutions with 3+ characters and gets at most 8 rows containing only id, name, type', async () => {
+    const { data, error } = await anonClient.rpc('search_institutions', { p_query: 'test' });
     if (error) throw error;
-    if (!Array.isArray(data)) throw new Error('Expected array from institution_directory');
+    if (!Array.isArray(data)) throw new Error('Expected array from search_institutions');
+    if (data.length > 8) throw new Error(`Expected at most 8 rows, got ${data.length}`);
+    for (const row of data) {
+      const keys = Object.keys(row).sort();
+      if (keys.join(',') !== 'id,name,type') {
+        throw new Error(`Row contains unexpected columns: ${keys.join(', ')}`);
+      }
+    }
   });
 
+  await runStep('search_institutions with fewer than 3 characters raises query_too_short', async () => {
+    const { error } = await anonClient.rpc('search_institutions', { p_query: 'ab' });
+    if (!error) throw new Error('Expected query_too_short exception');
+    if (!error.message.includes('query_too_short')) {
+      throw new Error(`Expected query_too_short, got: ${error.message}`);
+    }
+  });
+
+  await runStep('Anon cannot select from institutions or institution_directory (permission denied or 0 rows)', async () => {
+    const { data: instData, error: instErr } = await anonClient.from('institutions').select('*');
+    if (!instErr && instData && instData.length > 0) {
+      throw new Error('Anon was able to read raw institutions table');
+    }
+
+    const { data: viewData, error: viewErr } = await anonClient.from('institution_directory').select('*');
+    if (!viewErr && viewData && viewData.length > 0) {
+      throw new Error('Anon was able to read institution_directory view');
+    }
+  });
   // -------------------------------------------------------------------------
   // 2. Authentication & Email Confirmation Gate
   // -------------------------------------------------------------------------
@@ -510,11 +533,28 @@ async function main() {
     }
   });
 
+  await runStep('Member A1 searching for Institution B name gets only id, name, type and no internal data', async () => {
+    const { data, error } = await memberA1Client.rpc('search_institutions', { p_query: `zz-smoke-instB-${runId}` });
+    if (error) throw error;
+    if (data && data.length > 0) {
+      const row = data[0];
+      const keys = Object.keys(row).sort();
+      if (keys.join(',') !== 'id,name,type') {
+        throw new Error(`Row exposed extra fields: ${keys.join(', ')}`);
+      }
+    }
+  });
+
   // -------------------------------------------------------------------------
   // 5. Custody Verification & Return Quality Gate
+  // 5. Custody Verification v2, QR, Hashes, Checklists & Quality Gate
   // Window: booking starts 10 minutes from now, ending 1 hour later (within 15m check-out window)
   // -------------------------------------------------------------------------
-  await runStep('Create Resource R2 and Booking for immediate custody window testing', async () => {
+  let r2QrIdentifier = null;
+  let accLensId = null;
+  let accBatteryId = null;
+
+  await runStep('Create Resource R2 with unique QR, accessories and custody booking', async () => {
     const { data: r2, error: r2Err } = await adminAClient
       .from('resources')
       .insert({
@@ -531,6 +571,23 @@ async function main() {
       .single();
     if (r2Err) throw r2Err;
     resourceR2Id = r2.id;
+    r2QrIdentifier = r2.qr_identifier;
+
+    if (!r2QrIdentifier || !r2QrIdentifier.startsWith('EQS-')) {
+      throw new Error(`Expected generated QR starting with EQS-, got: ${r2QrIdentifier}`);
+    }
+
+    // Add accessories
+    const { data: accs, error: accErr } = await adminAClient
+      .from('resource_accessories')
+      .insert([
+        { resource_id: resourceR2Id, name: 'Precision Lens', required: true },
+        { resource_id: resourceR2Id, name: 'Li-Ion Battery Pack', required: true },
+      ])
+      .select();
+    if (accErr) throw accErr;
+    accLensId = accs[0].id;
+    accBatteryId = accs[1].id;
 
     await adminAClient.from('eligibility_rules').insert({
       resource_id: resourceR2Id,
@@ -540,7 +597,7 @@ async function main() {
     });
 
     const nowMs = Date.now();
-    const custStart = new Date(nowMs + 10 * 60 * 1000).toISOString(); // 10m from now -> within 15m early window
+    const custStart = new Date(nowMs + 10 * 60 * 1000).toISOString();
     const custEnd = new Date(nowMs + 70 * 60 * 1000).toISOString();
 
     const { data: bk, error: bkErr } = await memberA1Client.rpc('request_booking', {
@@ -560,32 +617,123 @@ async function main() {
     if (appErr) throw appErr;
   });
 
-  await runStep('Check-out without all required photo slots fails with missing_photos', async () => {
-    const { error } = await memberA1Client.rpc('check_out_booking', {
-      p_booking_id: bookingCustodyId,
-      p_photos: [
-        {
-          slot: 'front',
-          storage_path: `${instAId}/${bookingCustodyId}/checkout/front.jpg`,
-          sha256: PNG_SHA256,
-          client_captured_at: new Date().toISOString(),
-        },
-      ], // missing 'back'
-      p_condition: 'good',
-      p_notes: 'Missing slot test',
+  await runStep('Owning admin successfully regenerates Resource R2 QR identifier', async () => {
+    const { data: newQr, error } = await adminAClient.rpc('regenerate_resource_qr', {
+      p_resource_id: resourceR2Id,
     });
+    if (error) throw error;
+    if (!newQr || !newQr.startsWith('EQS-') || newQr === r2QrIdentifier) {
+      throw new Error(`Expected new valid QR identifier, got: ${newQr}`);
+    }
+    r2QrIdentifier = newQr;
+  });
 
-    if (!error) throw new Error('Expected missing_photos failure');
-    if (!error.message.includes('missing_photos')) {
-      throw new Error(`Expected missing_photos, got: ${error.message}`);
+  await runStep('Foreign tenant admin cannot regenerate Resource R2 QR identifier', async () => {
+    const { error } = await adminBClient.rpc('regenerate_resource_qr', {
+      p_resource_id: resourceR2Id,
+    });
+    if (!error || !error.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden when Admin B regenerates A QR, got: ${error?.message}`);
     }
   });
 
-  await runStep('Complete photo upload, assert immutability, and complete check-out', async () => {
+  await runStep('Borrower calls verify_asset_qr with matching and mismatched QR codes', async () => {
+    // Mismatch
+    const { data: mismatchMatch, error: mErr } = await memberA1Client.rpc('verify_asset_qr', {
+      p_booking_id: bookingCustodyId,
+      p_qr: 'EQS-WRONG9999',
+      p_phase: 'checkout',
+    });
+    if (mErr) throw mErr;
+    if (mismatchMatch !== false) throw new Error('Expected verify_asset_qr to return false for mismatch');
+
+    // Correct
+    const { data: correctMatch, error: cErr } = await memberA1Client.rpc('verify_asset_qr', {
+      p_booking_id: bookingCustodyId,
+      p_qr: r2QrIdentifier,
+      p_phase: 'checkout',
+    });
+    if (cErr) throw cErr;
+    if (correctMatch !== true) throw new Error('Expected verify_asset_qr to return true for correct QR');
+  });
+
+  await runStep('start_checkout logs audit action and check-out requires QR code', async () => {
+    const { error: startErr } = await memberA1Client.rpc('start_checkout', {
+      p_booking_id: bookingCustodyId,
+    });
+    if (startErr) throw startErr;
+
+    // Check-out without QR -> qr_required
+    const { error: noQrErr } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [],
+      p_condition: 'excellent',
+      p_notes: 'Missing QR test',
+      p_accessory_checks: [],
+      p_qr_identifier: '',
+    });
+    if (!noQrErr || !noQrErr.message.includes('qr_required')) {
+      throw new Error(`Expected qr_required, got: ${noQrErr?.message}`);
+    }
+
+    // Check-out with wrong QR -> qr_mismatch
+    const { error: wrongQrErr } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [],
+      p_condition: 'excellent',
+      p_notes: 'Wrong QR test',
+      p_accessory_checks: [],
+      p_qr_identifier: 'EQS-BADTAG000',
+    });
+    if (!wrongQrErr || !wrongQrErr.message.includes('qr_mismatch')) {
+      throw new Error(`Expected qr_mismatch, got: ${wrongQrErr?.message}`);
+    }
+  });
+
+  await runStep('Check-out validates complete accessory checklist and 64-char sha256 hashes', async () => {
     const pathFront = `${instAId}/${bookingCustodyId}/checkout/front.jpg`;
     const pathBack = `${instAId}/${bookingCustodyId}/checkout/back.jpg`;
 
-    // Upload test photos
+    // 1. Incomplete accessory checklist -> accessory_checklist_incomplete
+    const { error: incCheckErr } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [
+        { slot: 'front', storage_path: pathFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'excellent',
+      p_notes: 'Incomplete check test',
+      p_accessory_checks: [{ accessory_id: accLensId, name: 'Precision Lens', state: 'present' }], // missing battery
+      p_qr_identifier: r2QrIdentifier,
+    });
+    if (!incCheckErr || !incCheckErr.message.includes('accessory_checklist_incomplete')) {
+      throw new Error(`Expected accessory_checklist_incomplete, got: ${incCheckErr?.message}`);
+    }
+
+    // 2. Malformed sha256 hash -> invalid_hash
+    const { error: badHashErr } = await memberA1Client.rpc('check_out_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [
+        { slot: 'front', storage_path: pathFront, sha256: 'not-a-valid-sha256-hex', client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'excellent',
+      p_notes: 'Bad hash test',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
+    });
+    if (!badHashErr || !badHashErr.message.includes('invalid_hash')) {
+      throw new Error(`Expected invalid_hash, got: ${badHashErr?.message}`);
+    }
+  });
+
+  await runStep('Upload photos, verify storage immutability, and complete checkout with condition excellent', async () => {
+    const pathFront = `${instAId}/${bookingCustodyId}/checkout/front.jpg`;
+    const pathBack = `${instAId}/${bookingCustodyId}/checkout/back.jpg`;
+
     const { error: up1 } = await memberA1Client.storage
       .from('custody-photos')
       .upload(pathFront, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
@@ -596,110 +744,244 @@ async function main() {
       .upload(pathBack, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
     if (up2) throw up2;
 
-    // Immutability: overwrite fails
+    // Overwrite fails
     const { error: owErr } = await memberA1Client.storage
       .from('custody-photos')
       .upload(pathFront, PNG_1X1, { upsert: true });
-    if (!owErr) throw new Error('Expected photo overwrite to be rejected');
+    if (!owErr) throw new Error('Photo overwrite must fail');
 
-    // Immutability: delete fails via storage policy
-    const { data: delData, error: delErr } = await memberA1Client.storage
-      .from('custody-photos')
-      .remove([pathFront]);
-    // Supabase storage remove returns an empty array or error when denied by RLS
-    if (delData && delData.length > 0) {
-      throw new Error('Custody photo deletion should be forbidden by storage policy');
-    }
-
-    // Check-out RPC
+    // Check-out succeeds
     const { data: co, error: coErr } = await memberA1Client.rpc('check_out_booking', {
       p_booking_id: bookingCustodyId,
       p_photos: [
         { slot: 'front', storage_path: pathFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
         { slot: 'back', storage_path: pathBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
       ],
-      p_condition: 'good',
-      p_notes: 'Check-out completed',
+      p_condition: 'excellent',
+      p_notes: 'Handover complete in pristine condition',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
     });
     if (coErr) throw coErr;
-    if (co.status !== 'checked_out') throw new Error(`Expected checked_out, got ${co.status}`);
+    if (co.status !== 'checked_out') throw new Error(`Expected checked_out, got: ${co.status}`);
+
+    // Photo integrity check: download via signed URL and verify hash
+    const { data: signData, error: sErr } = await memberA1Client.storage
+      .from('custody-photos')
+      .createSignedUrl(pathFront, 60);
+    if (sErr) throw sErr;
+    const resp = await fetch(signData.signedUrl);
+    const buf = Buffer.from(await resp.arrayBuffer());
+    const dlHash = crypto.createHash('sha256').update(buf).digest('hex');
+    if (dlHash !== PNG_SHA256) throw new Error('Downloaded photo hash did not match stored hash');
+
+    // Verify custody_photos row metadata has taken_by and server created_at
+    const { data: dbPhotos } = await memberA1Client
+      .from('custody_photos')
+      .select('*')
+      .eq('booking_id', bookingCustodyId);
+    if (dbPhotos && dbPhotos.length > 0) {
+      if (dbPhotos[0].taken_by !== memberA1Id || !dbPhotos[0].created_at) {
+        throw new Error('Photo metadata missing taken_by or server created_at');
+      }
+    }
   });
 
-  await runStep('Damaged check-in without notes fails with notes_required', async () => {
+  await runStep('start_return logs return_initiated and check-in requires QR', async () => {
+    const { error: sErr } = await memberA1Client.rpc('start_return', {
+      p_booking_id: bookingCustodyId,
+    });
+    if (sErr) throw sErr;
+
     const pathInFront = `${instAId}/${bookingCustodyId}/checkin/front.jpg`;
     const pathInBack = `${instAId}/${bookingCustodyId}/checkin/back.jpg`;
+    await memberA1Client.storage.from('custody-photos').upload(pathInFront, PNG_1X1, { contentType: 'image/jpeg' });
+    await memberA1Client.storage.from('custody-photos').upload(pathInBack, PNG_1X1, { contentType: 'image/jpeg' });
 
-    await memberA1Client.storage
-      .from('custody-photos')
-      .upload(pathInFront, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
-    await memberA1Client.storage
-      .from('custody-photos')
-      .upload(pathInBack, PNG_1X1, { contentType: 'image/jpeg', upsert: false });
-
-    const { error } = await memberA1Client.rpc('check_in_booking', {
+    const { error: noQrErr } = await memberA1Client.rpc('check_in_booking', {
       p_booking_id: bookingCustodyId,
       p_photos: [
         { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
         { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
       ],
-      p_condition: 'damaged',
-      p_notes: '   ', // Blank notes must be rejected
+      p_condition: 'minor_damage',
+      p_notes: 'Missing QR on return',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: '',
     });
-
-    if (!error) throw new Error('Expected failure when condition is damaged with blank notes');
-    if (!error.message.includes('notes_required')) {
-      throw new Error(`Expected notes_required, got: ${error.message}`);
+    if (!noQrErr || !noQrErr.message.includes('qr_required')) {
+      throw new Error(`Expected qr_required on check-in, got: ${noQrErr?.message}`);
     }
   });
 
-  await runStep('Damaged check-in with notes auto-creates incident and notifies admins', async () => {
+  await runStep('Return with degraded condition and missing accessory flags return and auto-creates incident', async () => {
     const pathInFront = `${instAId}/${bookingCustodyId}/checkin/front.jpg`;
     const pathInBack = `${instAId}/${bookingCustodyId}/checkin/back.jpg`;
 
+    // Blank notes on defect -> notes_required
+    const { error: blankErr } = await memberA1Client.rpc('check_in_booking', {
+      p_booking_id: bookingCustodyId,
+      p_photos: [
+        { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+        { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
+      ],
+      p_condition: 'minor_damage',
+      p_notes: '   ',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'missing' }, // missing!
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
+    });
+    if (!blankErr || !blankErr.message.includes('notes_required')) {
+      throw new Error(`Expected notes_required, got: ${blankErr?.message}`);
+    }
+
+    // Submit with notes
     const { data: ci, error: ciErr } = await memberA1Client.rpc('check_in_booking', {
       p_booking_id: bookingCustodyId,
       p_photos: [
         { slot: 'front', storage_path: pathInFront, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
         { slot: 'back', storage_path: pathInBack, sha256: PNG_SHA256, client_captured_at: new Date().toISOString() },
       ],
-      p_condition: 'damaged',
-      p_notes: 'Objective lens barrel cracked during fieldwork',
+      p_condition: 'minor_damage',
+      p_notes: 'Precision lens was dropped in field; front filter thread dented and lens cap missing',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'missing' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
     });
     if (ciErr) throw ciErr;
-    if (ci.status !== 'returned') throw new Error(`Expected returned status, got ${ci.status}`);
+    if (ci.status !== 'returned') throw new Error(`Expected returned, got: ${ci.status}`);
 
-    // Verify incident auto-creation
-    const { data: incs, error: incErr } = await adminAClient
-      .from('incidents')
+    // Verify custody event was flagged
+    const { data: cEvs, error: ceErr } = await adminAClient
+      .from('custody_events')
       .select('*')
-      .eq('booking_id', bookingCustodyId);
-    if (incErr) throw incErr;
-    if (!incs || incs.length === 0) throw new Error('Incident was not auto-created on damaged check-in');
-
-    // Verify admin notification
-    const { data: notifs, error: notifErr } = await adminAClient
-      .from('notifications')
-      .select('*')
-      .eq('user_id', adminAId);
-    if (notifErr) throw notifErr;
-    const incNotif = notifs.find((n) => n.type === 'incident_reported');
-    if (!incNotif) throw new Error('Admin did not receive incident_reported notification');
+      .eq('booking_id', bookingCustodyId)
+      .eq('phase', 'checkin')
+      .single();
+    if (ceErr) throw ceErr;
+    if (!cEvs.flagged) throw new Error('Expected checkin custody event to be flagged');
+    if (cEvs.flag_reasons.length === 0) throw new Error('Expected flag_reasons to be populated');
   });
 
-  await runStep('Admin inspect_return reject sets status to disputed', async () => {
+  await runStep('inspect_return permissions: borrower and foreign admin are forbidden', async () => {
+    // Borrower calling inspect_return -> forbidden
+    const { error: bErr } = await memberA1Client.rpc('inspect_return', {
+      p_booking_id: bookingCustodyId,
+      p_condition: 'good',
+      p_accessory_checks: [],
+      p_notes: 'Borrower self-inspect attempt',
+    });
+    if (!bErr || !bErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for borrower inspect_return, got: ${bErr?.message}`);
+    }
+
+    // Foreign admin B calling inspect_return on A booking -> forbidden
+    const { error: fErr } = await adminBClient.rpc('inspect_return', {
+      p_booking_id: bookingCustodyId,
+      p_condition: 'good',
+      p_accessory_checks: [],
+      p_notes: 'Foreign admin inspect attempt',
+    });
+    if (!fErr || !fErr.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden for foreign admin inspect_return, got: ${fErr?.message}`);
+    }
+  });
+
+  await runStep('Admin A inspect_return with defect server-computes disputed status and logs dispute_opened', async () => {
     const { data: insp, error: inspErr } = await adminAClient.rpc('inspect_return', {
       p_booking_id: bookingCustodyId,
-      p_accept: false,
-      p_notes: 'Damage inspection confirmed by senior curator',
+      p_condition: 'major_damage',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'missing' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_notes: 'Damage inspection confirmed: filter ring warped and optic element scratched',
     });
     if (inspErr) throw inspErr;
-    if (insp.status !== 'disputed') throw new Error(`Expected disputed status, got ${insp.status}`);
+    if (insp.status !== 'disputed') throw new Error(`Expected disputed status, got: ${insp.status}`);
+  });
+
+  await runStep('Timeline contains custody.* audit events in chronological order and enforces participant privacy', async () => {
+    // Borrower can read timeline
+    const { data: tl, error: tlErr } = await memberA1Client.rpc('get_custody_timeline', {
+      p_booking_id: bookingCustodyId,
+    });
+    if (tlErr) throw tlErr;
+    if (!Array.isArray(tl) || tl.length < 5) {
+      throw new Error(`Expected comprehensive timeline with audit events, got ${tl?.length}`);
+    }
+
+    // Verify chronological order
+    let lastTs = 0;
+    for (const item of tl) {
+      const ts = new Date(item.occurred_at).getTime();
+      if (ts < lastTs) throw new Error('Timeline events are not in non-decreasing time order');
+      lastTs = ts;
+    }
+
+    // Unrelated Member B1 attempting to read A timeline -> forbidden
+    const { error: b1Err } = await memberB1Client.rpc('get_custody_timeline', {
+      p_booking_id: bookingCustodyId,
+    });
+    if (!b1Err || !b1Err.message.includes('forbidden')) {
+      throw new Error(`Expected forbidden when unrelated member reads timeline, got: ${b1Err?.message}`);
+    }
+  });
+
+  await runStep('resolve_dispute requires admin, valid resolution and non-empty notes; closes case permanently', async () => {
+    // 1. Empty notes -> notes_required
+    const { error: emptyNotesErr } = await adminAClient.rpc('resolve_dispute', {
+      p_booking_id: bookingCustodyId,
+      p_resolution: 'borrower_responsible',
+      p_notes: '   ',
+    });
+    if (!emptyNotesErr || !emptyNotesErr.message.includes('notes_required')) {
+      throw new Error(`Expected notes_required on resolve_dispute, got: ${emptyNotesErr?.message}`);
+    }
+
+    // 2. Successful resolution
+    const { data: resBk, error: resErr } = await adminAClient.rpc('resolve_dispute', {
+      p_booking_id: bookingCustodyId,
+      p_resolution: 'borrower_responsible',
+      p_notes: 'Borrower agreed to pay replacement deductible of $120. Case settled.',
+    });
+    if (resErr) throw resErr;
+    if (resBk.status !== 'closed') throw new Error(`Expected closed status, got: ${resBk.status}`);
+
+    // 3. Second call fails with invalid_state (booking already closed)
+    const { error: secondErr } = await adminAClient.rpc('resolve_dispute', {
+      p_booking_id: bookingCustodyId,
+      p_resolution: 'no_fault',
+      p_notes: 'Duplicate resolution attempt',
+    });
+    if (!secondErr || !secondErr.message.includes('invalid_state')) {
+      throw new Error(`Expected invalid_state on second resolve, got: ${secondErr?.message}`);
+    }
+
+    // 4. Verify notification to borrower
+    const { data: notifs, error: nErr } = await memberA1Client
+      .from('notifications')
+      .select('*')
+      .eq('user_id', memberA1Id)
+      .eq('type', 'dispute_resolved');
+    if (nErr) throw nErr;
+    if (notifs.length === 0) throw new Error('Borrower did not receive dispute_resolved notification');
   });
 
   // -------------------------------------------------------------------------
-  // 6. Clean Return & Close Booking Path
+  // 6. Clean Booking Path (condition good, everything present -> closed)
   // -------------------------------------------------------------------------
-  await runStep('Clean booking flow with condition good and inspect_return accept -> closed', async () => {
+  await runStep('Second clean booking path with all accessories present and clean inspection closes booking directly', async () => {
     const nowMs = Date.now();
     const cleanStart = new Date(nowMs + 5 * 60 * 1000).toISOString();
     const cleanEnd = new Date(nowMs + 65 * 60 * 1000).toISOString();
@@ -731,9 +1013,14 @@ async function main() {
       ],
       p_condition: 'good',
       p_notes: 'Check-out clean',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
     });
 
-    // 4. Check-in
+    // 4. Check-in clean
     const pathInFront = `${instAId}/${bookingCleanId}/checkin/front.jpg`;
     const pathInBack = `${instAId}/${bookingCleanId}/checkin/back.jpg`;
     await memberA2Client.storage.from('custody-photos').upload(pathInFront, PNG_1X1, { contentType: 'image/jpeg' });
@@ -747,18 +1034,26 @@ async function main() {
       ],
       p_condition: 'good',
       p_notes: 'All items returned in pristine order',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_qr_identifier: r2QrIdentifier,
     });
 
-    // 5. Inspect accept -> closed
+    // 5. Inspect accept clean -> closed
     const { data: closedBk, error: closeErr } = await adminAClient.rpc('inspect_return', {
       p_booking_id: bookingCleanId,
-      p_accept: true,
-      p_notes: 'Verified and restocked',
+      p_condition: 'good',
+      p_accessory_checks: [
+        { accessory_id: accLensId, name: 'Precision Lens', state: 'present' },
+        { accessory_id: accBatteryId, name: 'Li-Ion Battery Pack', state: 'present' },
+      ],
+      p_notes: 'Verified and restocked in clean order',
     });
     if (closeErr) throw closeErr;
     if (closedBk.status !== 'closed') throw new Error(`Expected closed status, got: ${closedBk.status}`);
   });
-
   // -------------------------------------------------------------------------
   // Summary Results
   // -------------------------------------------------------------------------

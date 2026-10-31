@@ -76,11 +76,12 @@ export function Discover() {
     'Projectors',
     'Classrooms',
     'Sports Equipment',
-    'Academic Books',
+    'Books & Reference',
   ];
 
-  const filteredResources = resources;
-
+  const filteredResources = useMemo(() => {
+    return resources.filter((r) => r.status !== 'retired');
+  }, [resources]);
   const handleReserve = async (res: Resource) => {
     try {
       setBookingState('submitting');
@@ -134,8 +135,8 @@ export function Discover() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Resource Discovery"
-        title="Campus Equipment Catalog"
-        description="Search and reserve computing gear, studio cameras, precision lab instruments, and study spaces across university departments."
+        title="Equipment Catalog"
+        description="Search and reserve computing gear, studio cameras, precision lab instruments, and study spaces across organization facilities."
       />
 
       {/* Discovery Filter Controls */}
@@ -211,14 +212,15 @@ export function Discover() {
           open={!!selectedResource}
           onOpenChange={(open) => !open && setSelectedResource(null)}
         >
-          <DialogContent className="sm:max-w-2xl p-0 overflow-hidden rounded-2xl max-h-[90vh] flex flex-col shadow-2xl">
+          <DialogContent className="sm:max-w-2xl p-0 overflow-hidden rounded-2xl max-h-[90vh] flex flex-col shadow-2xl [&>button]:bg-background/70 [&>button]:backdrop-blur-sm [&>button]:rounded-full [&>button]:shadow-sm [&>button]:p-1.5 [&>button]:text-foreground [&>button]:ring-1 [&>button]:ring-border [&>button]:top-3 [&>button]:right-3 [&>button]:opacity-100">
             <div className="relative h-36 sm:h-40 w-full overflow-hidden bg-muted shrink-0">
               <img
                 src={selectedResource.imageUrl}
                 alt={selectedResource.title}
                 className="h-full w-full object-cover"
               />
-              <div className="absolute top-3 left-3">
+              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/40 via-black/10 to-transparent pointer-events-none" />
+              <div className="absolute top-3 left-3 z-10">
                 <StatusBadge status={selectedResource.status} />
               </div>
             </div>
@@ -289,25 +291,21 @@ export function Discover() {
                 </span>
 
                 {/* Availability status */}
-                <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-xl border border-border/50">
-                  <div>
-                    <span className="text-muted-foreground block text-xs">Availability Status</span>
-                    <div className="mt-1.5">
-                      <StatusBadge status={selectedResource.status} />
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground block text-xs">Available Stock</span>
-                    <span className="font-bold text-foreground text-base mt-1 block">
-                      {selectedResource.availableQuantity || 1} / {selectedResource.totalQuantity || 1} units
-                    </span>
-                  </div>
+                <div className="text-sm bg-muted/30 p-4 rounded-xl border border-border/50 flex items-center justify-between">
+                  <span className="text-muted-foreground text-xs">Availability Status</span>
+                  <StatusBadge status={selectedResource.status} />
                 </div>
 
                 {selectedResource.status !== 'available' ? (
                   <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm flex items-center gap-2.5">
                     <Info className="h-5 w-5 shrink-0" />
-                    <span>This resource is currently unavailable ({selectedResource.status}). Reservations are disabled until it is returned or restocked.</span>
+                    <span>
+                      {selectedResource.status === 'retired'
+                        ? 'This resource has been retired and can no longer be reserved.'
+                        : selectedResource.status === 'maintenance'
+                        ? 'This resource is under maintenance. Reservations are disabled until it is back in service.'
+                        : 'This resource is not available for booking right now.'}
+                    </span>
                   </div>
                 ) : (
                   /* Reservation form wired to Backend */
@@ -439,22 +437,8 @@ export function Discover() {
                       <label className="text-xs font-semibold text-foreground block mb-1.5">Purpose / Coursework</label>
                       <Input
                         name="purpose"
-                        placeholder="Academic coursework, project or research"
-                        defaultValue="Academic research & project work"
-                        className="w-full text-sm h-10 px-3"
-                      />
-                    </div>
-
-                    {/* Note: Units left as UI element; ignored by backend unless added to schema later */}
-                    <div className={selectedResource.availableQuantity ? "block" : "hidden"}>
-                      <label className="text-xs font-semibold text-foreground block mb-1.5">Units Requested</label>
-                      <Input
-                        type="number"
-                        name="units"
-                        min="1"
-                        max={selectedResource.availableQuantity || 1}
-                        value={requestedUnits}
-                        onChange={(e) => setRequestedUnits(Math.max(1, parseInt(e.target.value) || 1))}
+                        placeholder="Project and research work"
+                        defaultValue="Project and research work"
                         className="w-full text-sm h-10 px-3"
                       />
                     </div>

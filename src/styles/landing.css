@@ -1,0 +1,115 @@
+/* src/styles/landing.css - EquipSync Landing Keyframes & Marquee Utilities */
+
+/* Marquee tracks */
+@keyframes marquee-scroll-left {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-scroll-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0%);
+  }
+}
+
+.marquee-container {
+  display: flex;
+  overflow: hidden;
+  user-select: none;
+  gap: 1rem;
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
+.marquee-track-left {
+  display: flex;
+  flex-shrink: 0;
+  gap: 1rem;
+  animation: marquee-scroll-left 32s linear infinite;
+}
+
+.marquee-track-right {
+  display: flex;
+  flex-shrink: 0;
+  gap: 1rem;
+  animation: marquee-scroll-right 32s linear infinite;
+}
+
+.marquee-container:hover .marquee-track-left,
+.marquee-container:hover .marquee-track-right {
+  animation-play-state: paused;
+}
+
+/* Floating mock cards */
+@keyframes float-subtle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes float-subtle-delayed {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+
+.animate-float-card {
+  animation: float-subtle 6s ease-in-out infinite;
+}
+
+.animate-float-card-delayed {
+  animation: float-subtle-delayed 7s ease-in-out infinite;
+}
+
+/* Scroll reveal utilities */
+.reveal-init {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Bento grid glow */
+.bento-card {
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.bento-card:hover {
+  transform: translateY(-3px);
+}
+
+/* Prefers-reduced-motion override */
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track-left,
+  .marquee-track-right,
+  .animate-float-card,
+  .animate-float-card-delayed {
+    animation: none !important;
+  }
+  .reveal-init {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .bento-card:hover {
+    transform: none !important;
+  }
+}

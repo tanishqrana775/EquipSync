@@ -23,7 +23,7 @@ export function RequirementBadges({
           className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 gap-1 font-semibold"
         >
           <ShieldAlert className="h-3 w-3" />
-          <span>Faculty Sign-off</span>
+          <span>Owner approval</span>
         </Badge>
       )}
 

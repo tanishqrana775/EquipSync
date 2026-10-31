@@ -17,7 +17,12 @@ const ERROR_MAP: Record<string, string> = {
   slot_taken: 'This time slot has just been taken. Please choose different dates.',
   invalid_state: "This action is not allowed in the booking's current state.",
   outside_window: 'Check-out is only allowed within 15 minutes of the booking start and before the end time.',
-  notes_required: 'Detailed notes are required when reporting damaged equipment or missing components.',
+  qr_required: 'Scanning or entering the asset QR identifier is required to proceed.',
+  qr_mismatch: 'The scanned QR code does not match this equipment. Please verify the physical asset tag.',
+  invalid_hash: 'Photo tamper-evidence validation failed. The computed image hash is invalid.',
+  accessory_checklist_incomplete: 'Please complete the accessory checklist for every listed component before continuing.',
+  notes_required: 'Detailed notes are strictly required when reporting damaged equipment, missing accessories, or flagged returns.',
+  query_too_short: 'Please enter at least 3 characters to search organisations.',
   not_found: 'The requested item could not be found.',
 };
 

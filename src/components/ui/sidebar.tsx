@@ -3,16 +3,19 @@ import { PanelLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { TooltipProvider } from '@/components/ui/tooltip';
+
+const SIDEBAR_STORAGE_KEY = 'equipsync_sidebar_open';
 
 interface SidebarContextType {
+  state: 'expanded' | 'collapsed';
   open: boolean;
-  setOpen: (open: boolean) => void;
+  setOpen: (open: boolean | ((value: boolean) => boolean)) => void;
   openMobile: boolean;
-  setOpenMobile: (open: boolean) => void;
+  setOpenMobile: (open: boolean | ((value: boolean) => boolean)) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
 }
-
 const SidebarContext = React.createContext<SidebarContextType | null>(null);
 
 export function useSidebar() {
@@ -43,21 +46,33 @@ export const SidebarProvider = React.forwardRef<
     },
     ref
   ) => {
-    const [openState, setOpenState] = React.useState(defaultOpen);
+    const [openState, setOpenState] = React.useState<boolean>(() => {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+        if (saved !== null) {
+          return saved === 'true';
+        }
+      }
+      return defaultOpen;
+    });
     const [openMobile, setOpenMobile] = React.useState(false);
     const [isMobile, setIsMobile] = React.useState(false);
 
     const open = openProp ?? openState;
     const setOpen = React.useCallback(
       (value: boolean | ((value: boolean) => boolean)) => {
-        const openState = typeof value === 'function' ? value(open) : value;
-        if (setOpenProp) {
-          setOpenProp(openState);
-        } else {
-          setOpenState(openState);
-        }
+        setOpenState((prev) => {
+          const next = typeof value === 'function' ? value(prev) : value;
+          if (setOpenProp) {
+            setOpenProp(next);
+          }
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+          }
+          return next;
+        });
       },
-      [setOpenProp, open]
+      [setOpenProp]
     );
 
     React.useEffect(() => {
@@ -71,13 +86,30 @@ export const SidebarProvider = React.forwardRef<
 
     const toggleSidebar = React.useCallback(() => {
       return isMobile
-        ? setOpenMobile((open) => !open)
-        : setOpen((open) => !open);
+        ? setOpenMobile((prev) => !prev)
+        : setOpen((prev) => !prev);
     }, [isMobile, setOpen, setOpenMobile]);
+
+    React.useEffect(() => {
+      const handleKeyDown = (event: KeyboardEvent) => {
+        if (
+          event.key === 'b' &&
+          (event.metaKey || event.ctrlKey) &&
+          !event.shiftKey &&
+          !event.altKey
+        ) {
+          event.preventDefault();
+          toggleSidebar();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [toggleSidebar]);
 
     return (
       <SidebarContext.Provider
         value={{
+          state: open ? 'expanded' : 'collapsed',
           open,
           setOpen,
           openMobile,
@@ -86,17 +118,20 @@ export const SidebarProvider = React.forwardRef<
           toggleSidebar,
         }}
       >
-        <div
-          ref={ref}
-          className={cn(
-            'group/sidebar-wrapper flex min-h-screen w-full has-[[data-variant=inset]]:bg-sidebar',
-            className
-          )}
-          style={style}
-          {...props}
-        >
-          {children}
-        </div>
+        <TooltipProvider delayDuration={0}>
+          <div
+            ref={ref}
+            data-state={open ? 'expanded' : 'collapsed'}
+            className={cn(
+              'group/sidebar-wrapper flex min-h-screen w-full has-[[data-variant=inset]]:bg-sidebar',
+              className
+            )}
+            style={style}
+            {...props}
+          >
+            {children}
+          </div>
+        </TooltipProvider>
       </SidebarContext.Provider>
     );
   }
@@ -134,8 +169,8 @@ export const Sidebar = React.forwardRef<
     side?: 'left' | 'right';
     collapsible?: 'offcanvas' | 'icon' | 'none';
   }
->(({ side = 'left', className, children, ...props }, ref) => {
-  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+>(({ side = 'left', collapsible = 'icon', className, children, ...props }, ref) => {
+  const { isMobile, openMobile, setOpenMobile, open } = useSidebar();
 
   if (isMobile) {
     return (
@@ -150,11 +185,16 @@ export const Sidebar = React.forwardRef<
     );
   }
 
+  const isCollapsed = collapsible === 'icon' && !open;
+
   return (
     <div
       ref={ref}
+      data-state={open ? 'expanded' : 'collapsed'}
+      data-collapsible={collapsible}
       className={cn(
-        'hidden lg:flex flex-col h-screen sticky top-0 border-r border-border bg-card z-30 transition-all duration-300 w-64',
+        'hidden lg:flex flex-col h-screen sticky top-0 border-r border-border bg-card z-30 transition-all duration-300 ease-in-out',
+        isCollapsed ? 'w-16' : 'w-64',
         className
       )}
       {...props}

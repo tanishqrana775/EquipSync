@@ -6,6 +6,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, UserPlus, Building2, GraduationCap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/shared/PasswordInput';
+import { InstitutionSearchAutocomplete } from '@/components/shared/InstitutionSearchAutocomplete';
 import {
   Card,
   CardContent,
@@ -23,7 +25,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { useAuth } from '@/providers/AuthProvider';
-import { signUpMember, signUpInstitution, listInstitutions, resendVerification, Institution } from '@/lib/auth';
+import { signUpMember, signUpInstitution, searchInstitutions, resendVerification, Institution } from '@/lib/auth';
 import { toastError } from '@/lib/errors';
 import { toast } from 'sonner';
 import { Mail, RefreshCw } from 'lucide-react';
@@ -33,7 +35,7 @@ const registerSchema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
   campusId: z.string().optional(),
   department: z.string().optional(),
-  email: z.string().email('Please enter a valid university email'),
+  email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   userType: z.enum(['student', 'staff', 'external']).default('student'),
   institutionId: z.string().optional(),
@@ -46,7 +48,8 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 export function Register() {
   const { setRole } = useAuth();
   const navigate = useNavigate();
-  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [selectedInstObj, setSelectedInstObj] = useState<Institution | null>(null);
+  const [institutionError, setInstitutionError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountType, setAccountType] = useState<'member' | 'institution_admin'>('member');
   const [registeredEmail, setRegisteredEmail] = useState<string | null>(null);
@@ -61,25 +64,6 @@ export function Register() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  useEffect(() => {
-    let mounted = true;
-    void listInstitutions()
-      .then((data) => {
-        if (mounted && data) {
-          const valid = data.filter((d): d is Institution & { id: string } => typeof d.id === 'string');
-          setInstitutions(valid);
-          if (valid.length > 0 && !form.getValues('institutionId')) {
-            form.setValue('institutionId', valid[0].id);
-          }
-        }
-      })
-      .catch(() => {
-        // Safe silent catch on load
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -110,9 +94,9 @@ export function Register() {
           institutionType: values.institutionType || 'University',
         }) as { user?: unknown; session?: unknown };
       } else {
-        const instId = values.institutionId || institutions[0]?.id;
-        if (!instId) {
-          toast.error('Please select an organisation or register a new one.');
+        if (!selectedInstObj) {
+          setInstitutionError('Please select an organisation from the list');
+          toast.error('Please select an organisation from the suggestions list.');
           return;
         }
         res = await signUpMember({
@@ -120,7 +104,7 @@ export function Register() {
           password: values.password,
           fullName: values.fullName,
           userType: values.userType,
-          institutionId: instId,
+          institutionId: selectedInstObj.id,
         }) as { user?: unknown; session?: unknown };
       }
 
@@ -208,7 +192,7 @@ export function Register() {
   }
   return (
     <div className="w-full max-w-md animate-fade-in">
-      <Card className="surface border-border/80 shadow-xl">
+      <Card className="surface border-border/80 shadow-xl backdrop-blur-md bg-card/85 rounded-2xl">
         <CardHeader className="space-y-1 text-center pb-4">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mb-2">
             <UserPlus className="h-6 w-6" />
@@ -265,15 +249,14 @@ export function Register() {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Full Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. Sarah Chen" {...field} />
+                      <Input aria-label="Full Name" className="hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
 
               {accountType === 'member' ? (
-                <>
+                <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <FormField
                       control={form.control}
@@ -287,7 +270,7 @@ export function Register() {
                               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                             >
                               <option value="student">Student</option>
-                              <option value="staff">Faculty / Staff</option>
+                              <option value="staff">Staff / Faculty</option>
                               <option value="external">External Affiliate</option>
                             </select>
                           </FormControl>
@@ -298,63 +281,32 @@ export function Register() {
 
                     <FormField
                       control={form.control}
-                      name="institutionId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-semibold">Institution</FormLabel>
-                          <FormControl>
-                            <select
-                              {...field}
-                              value={field.value ?? ''}
-                              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring truncate"
-                            >
-                              {institutions.length === 0 ? (
-                                <option value="">Loading institutions...</option>
-                              ) : (
-                                institutions.map((inst) => (
-                                  <option key={inst.id} value={inst.id ?? ''}>
-                                    {inst.name}
-                                  </option>
-                                ))
-                              )}
-                            </select>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
                       name="campusId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-xs font-semibold">Campus ID</FormLabel>
+                          <FormLabel className="text-xs font-semibold">Member / Staff ID</FormLabel>
                           <FormControl>
-                            <Input placeholder="STU-1234" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="department"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-xs font-semibold">Department</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Engineering" {...field} />
+                            <Input aria-label="Member ID" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
-                </>
+
+                  <div>
+                    <FormLabel className="text-xs font-semibold block mb-1">Organisation Affiliation</FormLabel>
+                    <InstitutionSearchAutocomplete
+                      selectedInstitution={selectedInstObj}
+                      onSelect={(inst) => {
+                        setSelectedInstObj(inst);
+                        setInstitutionError(null);
+                        form.setValue('institutionId', inst ? inst.id : '');
+                      }}
+                      error={institutionError}
+                    />
+                  </div>
+                </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <FormField
@@ -364,7 +316,7 @@ export function Register() {
                       <FormItem>
                         <FormLabel className="text-xs font-semibold">Organisation Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g. Apex Engineering Labs" {...field} />
+                          <Input aria-label="Organisation Name" className="hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -404,9 +356,8 @@ export function Register() {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Email Address</FormLabel>
                     <FormControl>
-                      <Input placeholder="name@organisation.edu" {...field} />
+                      <Input aria-label="Email Address" className="hover:border-primary/40 focus-visible:ring-1 transition-colors" {...field} />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -418,15 +369,14 @@ export function Register() {
                   <FormItem>
                     <FormLabel className="text-xs font-semibold">Password</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
+                      <PasswordInput aria-label="Password" {...field} />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
 
               <div className="pt-2">
-                <Button type="submit" disabled={isSubmitting} className="w-full gap-2 font-semibold shadow-sm">
+                <Button type="submit" disabled={isSubmitting} className="w-full gap-2 font-semibold shadow-sm hover:-translate-y-px active:scale-[0.98] transition-all">
                   <span>{isSubmitting ? 'Registering...' : 'Register & Open Dashboard'}</span>
                   <ArrowRight className="h-4 w-4" />
                 </Button>

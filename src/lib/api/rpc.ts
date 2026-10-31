@@ -219,6 +219,7 @@ export async function checkOutBooking(args: {
   condition:       ConditionRating;
   notes:           string;
   accessoryChecks?: AccessoryCheckInput[];
+  qrIdentifier:    string;
 }): Promise<Booking> {
   return unwrap(
     await supabase.rpc('check_out_booking', {
@@ -227,6 +228,7 @@ export async function checkOutBooking(args: {
       p_condition:        args.condition,
       p_notes:            args.notes,
       p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
+      p_qr_identifier:    args.qrIdentifier,
     })
   ) as Booking;
 }
@@ -240,6 +242,7 @@ export async function checkInBooking(args: {
   condition:       ConditionRating;
   notes:           string;
   accessoryChecks?: AccessoryCheckInput[];
+  qrIdentifier:    string;
 }): Promise<Booking> {
   return unwrap(
     await supabase.rpc('check_in_booking', {
@@ -248,6 +251,7 @@ export async function checkInBooking(args: {
       p_condition:        args.condition,
       p_notes:            args.notes,
       p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
+      p_qr_identifier:    args.qrIdentifier,
     })
   ) as Booking;
 }
@@ -256,17 +260,75 @@ export async function checkInBooking(args: {
 // inspect_return  (admin)
 // ---------------------------------------------------------------------------
 export async function inspectReturn(args: {
-  bookingId: string;
-  accept:    boolean;
-  notes?:    string;
+  bookingId:        string;
+  condition:        ConditionRating;
+  accessoryChecks?: AccessoryCheckInput[];
+  notes?:           string;
 }): Promise<Booking> {
   return unwrap(
     await supabase.rpc('inspect_return', {
-      p_booking_id: args.bookingId,
-      p_accept:     args.accept,
-      p_notes:      args.notes ?? undefined,
+      p_booking_id:       args.bookingId,
+      p_condition:        args.condition,
+      p_accessory_checks: (args.accessoryChecks ?? []) as unknown as Database['public']['Tables']['custody_events']['Row']['accessory_checks'],
+      p_notes:            args.notes ?? undefined,
     })
   ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// verify_asset_qr  (borrower)
+// ---------------------------------------------------------------------------
+export async function verifyAssetQr(args: {
+  bookingId: string;
+  qr:        string;
+  phase:     'checkout' | 'return';
+}): Promise<boolean> {
+  return unwrap(
+    await supabase.rpc('verify_asset_qr', {
+      p_booking_id: args.bookingId,
+      p_qr:         args.qr,
+      p_phase:      args.phase,
+    })
+  ) as boolean;
+}
+
+// ---------------------------------------------------------------------------
+// start_checkout & start_return (borrower)
+// ---------------------------------------------------------------------------
+export async function startCheckout(bookingId: string): Promise<void> {
+  unwrap(await supabase.rpc('start_checkout', { p_booking_id: bookingId }));
+}
+
+export async function startReturn(bookingId: string): Promise<void> {
+  unwrap(await supabase.rpc('start_return', { p_booking_id: bookingId }));
+}
+
+// ---------------------------------------------------------------------------
+// resolve_dispute (admin)
+// ---------------------------------------------------------------------------
+export async function resolveDispute(args: {
+  bookingId:  string;
+  resolution: 'borrower_responsible' | 'no_fault' | 'shared_responsibility';
+  notes:      string;
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('resolve_dispute', {
+      p_booking_id:  args.bookingId,
+      p_resolution:  args.resolution,
+      p_notes:       args.notes,
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
+// regenerate_resource_qr (admin)
+// ---------------------------------------------------------------------------
+export async function regenerateResourceQr(resourceId: string): Promise<string> {
+  return unwrap(
+    await supabase.rpc('regenerate_resource_qr', {
+      p_resource_id: resourceId,
+    })
+  ) as string;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +418,23 @@ export async function getPublicStats(): Promise<PublicStats | null> {
   } catch {
     return null;
   }
+}
+
+export interface InstitutionSearchResult {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export async function searchInstitutions(query: string): Promise<InstitutionSearchResult[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 3) {
+    return [];
+  }
+  const rows = unwrap<InstitutionSearchResult[]>(
+    await supabase.rpc('search_institutions', { p_query: trimmed })
+  );
+  return rows ?? [];
 }
 
 // ---------------------------------------------------------------------------

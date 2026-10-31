@@ -55,7 +55,7 @@ export function AppShell() {
         <div className="flex flex-1 flex-col min-w-0">
           <Topbar onSearchClick={() => setSearchOpen(true)} />
 
-          <main className="flex-1 p-4 md:p-6 lg:p-8 pb-20 lg:pb-8 page-bg animate-fade-in">
+          <main className="flex-1 p-4 md:p-6 lg:p-8 pb-20 lg:pb-8 bg-gradient-to-b from-background to-muted/30 min-h-[calc(100vh-4rem)] animate-fade-in">
             <div className="mx-auto max-w-7xl">
               <Outlet />
             </div>
@@ -69,7 +69,7 @@ export function AppShell() {
         <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
           <CommandInput placeholder="Type a resource, category, or page to jump..." />
           <CommandList>
-            <CommandEmpty>No matching campus resources found.</CommandEmpty>
+            <CommandEmpty>No matching resources found.</CommandEmpty>
             <CommandGroup heading="Navigation">
               <CommandItem
                 onSelect={() => handleSelectRoute('/app/institution')}

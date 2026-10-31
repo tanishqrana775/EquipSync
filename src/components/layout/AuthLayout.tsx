@@ -1,9 +1,11 @@
 import { Outlet, Link } from 'react-router-dom';
 import { Share2 } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
+import { RippleBackground } from '@/components/effects/RippleBackground';
+
 export function AuthLayout() {
   return (
-    <div className="min-h-screen page-bg flex flex-col justify-between">
+    <RippleBackground intensity="auth" className="relative isolate min-h-screen flex flex-col justify-between bg-primary/[0.02]">
       {/* Auth Header */}
       <header className="flex items-center justify-between p-4 sm:p-6 max-w-7xl mx-auto w-full">
         <Link to="/" className="flex items-center gap-2">
@@ -26,6 +28,6 @@ export function AuthLayout() {
       <footer className="p-4 text-center text-xs text-muted-foreground">
         EquipSync • Trusted Equipment & Space Sharing Platform
       </footer>
-    </div>
+    </RippleBackground>
   );
 }

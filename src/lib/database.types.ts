@@ -173,6 +173,9 @@ export type Database = {
           id: string
           notes: string | null
           phase: Database["public"]["Enums"]["custody_phase"]
+          qr_verified: boolean
+          flagged: boolean
+          flag_reasons: string[]
         }
         Insert: {
           accessory_checks?: Json
@@ -183,6 +186,9 @@ export type Database = {
           id?: string
           notes?: string | null
           phase: Database["public"]["Enums"]["custody_phase"]
+          qr_verified?: boolean
+          flagged?: boolean
+          flag_reasons?: string[]
         }
         Update: {
           accessory_checks?: Json
@@ -193,6 +199,9 @@ export type Database = {
           id?: string
           notes?: string | null
           phase?: Database["public"]["Enums"]["custody_phase"]
+          qr_verified?: boolean
+          flagged?: boolean
+          flag_reasons?: string[]
         }
         Relationships: [
           {
@@ -326,6 +335,8 @@ export type Database = {
           status: Database["public"]["Enums"]["incident_status"]
           type: string
           updated_at: string
+          resolution: "borrower_responsible" | "no_fault" | "shared_responsibility" | null
+          resolution_notes: string | null
         }
         Insert: {
           ai_summary?: string | null
@@ -342,6 +353,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["incident_status"]
           type: string
           updated_at?: string
+          resolution?: "borrower_responsible" | "no_fault" | "shared_responsibility" | null
+          resolution_notes?: string | null
         }
         Update: {
           ai_summary?: string | null
@@ -358,6 +371,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["incident_status"]
           type?: string
           updated_at?: string
+          resolution?: "borrower_responsible" | "no_fault" | "shared_responsibility" | null
+          resolution_notes?: string | null
         }
         Relationships: [
           {
@@ -858,6 +873,7 @@ export type Database = {
           required_photo_slots: string[]
           status: string
           updated_at: string
+          qr_identifier: string
         }
         Insert: {
           asset_tag?: string | null
@@ -875,6 +891,7 @@ export type Database = {
           required_photo_slots?: string[]
           status?: string
           updated_at?: string
+          qr_identifier?: string
         }
         Update: {
           asset_tag?: string | null
@@ -892,6 +909,7 @@ export type Database = {
           required_photo_slots?: string[]
           status?: string
           updated_at?: string
+          qr_identifier?: string
         }
         Relationships: [
           {
@@ -1091,6 +1109,26 @@ export type Database = {
       }
     }
     Functions: {
+      verify_asset_qr: {
+        Args: { p_booking_id: string; p_qr: string; p_phase: string }
+        Returns: boolean
+      }
+      start_checkout: {
+        Args: { p_booking_id: string }
+        Returns: undefined
+      }
+      start_return: {
+        Args: { p_booking_id: string }
+        Returns: undefined
+      }
+      resolve_dispute: {
+        Args: { p_booking_id: string; p_notes: string; p_resolution: string }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
+      }
+      regenerate_resource_qr: {
+        Args: { p_resource_id: string }
+        Returns: string
+      }
       get_my_context: {
         Args: Record<PropertyKey, never>
         Returns: Json
@@ -1102,6 +1140,14 @@ export type Database = {
       set_member_institution: {
         Args: { p_institution_id: string }
         Returns: Database["public"]["Tables"]["profiles"]["Row"]
+      }
+      search_institutions: {
+        Args: { p_query: string }
+        Returns: {
+          id: string
+          name: string
+          type: string
+        }[]
       }
       cancel_booking: {
         Args: { p_booking_id: string }
@@ -1135,6 +1181,7 @@ export type Database = {
           p_condition: Database["public"]["Enums"]["condition_rating"]
           p_notes: string
           p_photos: Json
+          p_qr_identifier: string
         }
         Returns: {
           created_at: string
@@ -1166,6 +1213,7 @@ export type Database = {
           p_condition: Database["public"]["Enums"]["condition_rating"]
           p_notes: string
           p_photos: Json
+          p_qr_identifier: string
         }
         Returns: {
           created_at: string
@@ -1243,7 +1291,12 @@ export type Database = {
       }
       get_custody_timeline: { Args: { p_booking_id: string }; Returns: Json }
       inspect_return: {
-        Args: { p_accept: boolean; p_booking_id: string; p_notes?: string }
+        Args: {
+          p_accessory_checks?: Json
+          p_booking_id: string
+          p_condition: Database["public"]["Enums"]["condition_rating"]
+          p_notes?: string
+        }
         Returns: {
           created_at: string
           decided_at: string | null
@@ -1479,7 +1532,7 @@ export type Database = {
         | "returned"
         | "closed"
         | "disputed"
-      condition_rating: "good" | "minor_wear" | "damaged" | "missing_parts"
+      condition_rating: "excellent" | "good" | "minor_wear" | "minor_damage" | "damaged" | "major_damage" | "missing_parts" | "non_functional"
       custody_phase: "checkout" | "checkin" | "inspection"
       incident_severity: "low" | "medium" | "high"
       incident_status: "open" | "resolved"
@@ -1632,7 +1685,7 @@ export const Constants = {
         "closed",
         "disputed",
       ],
-      condition_rating: ["good", "minor_wear", "damaged", "missing_parts"],
+      condition_rating: ["excellent", "good", "minor_wear", "minor_damage", "damaged", "major_damage", "missing_parts", "non_functional"],
       custody_phase: ["checkout", "checkin", "inspection"],
       incident_severity: ["low", "medium", "high"],
       incident_status: ["open", "resolved"],

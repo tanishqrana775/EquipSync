@@ -77,10 +77,12 @@ export function ResourceThumb({
             <span className="truncate">{resource.location}</span>
           </div>
 
-          <div className="flex items-center gap-1 font-semibold text-foreground">
-            <span className="text-primary font-bold">{resource.utilisationRate}%</span>
-            <span className="text-[10px] text-muted-foreground font-normal">used</span>
-          </div>
+          {resource.utilisationRate > 0 ? (
+            <div className="flex items-center gap-1 font-semibold text-foreground">
+              <span className="text-primary font-bold">{resource.utilisationRate}%</span>
+              <span className="text-[10px] text-muted-foreground font-normal">used</span>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

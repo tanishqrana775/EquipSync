@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { getMyContext } from '../lib/api/rpc';
 import { User, UserRole } from '../lib/types';
 import { queryClient } from '../lib/queryClient';
+import { startRealtimeStatusStore, stopRealtimeStatusStore } from '../lib/realtimeStatus';
 import type { Database } from '../lib/database.types';
 
 export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
@@ -113,6 +114,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Initial session load
     void supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
+      if (s) {
+        startRealtimeStatusStore();
+      } else {
+        stopRealtimeStatusStore();
+      }
       void loadUserContext(s);
     });
 
@@ -120,6 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === 'SIGNED_OUT') {
         queryClient.clear();
+        stopRealtimeStatusStore();
+      } else if (s) {
+        startRealtimeStatusStore();
       }
       setSession((prev) => {
         if (prev?.user?.id && s?.user?.id && prev.user.id !== s.user.id) {
@@ -129,7 +138,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       void loadUserContext(s);
     });
-
     return () => {
       subscription.unsubscribe();
     };
@@ -142,6 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Ignore network errors on signOut
     }
     queryClient.clear();
+    stopRealtimeStatusStore();
     setSession(null);
     setProfile(null);
     setInstitution(null);

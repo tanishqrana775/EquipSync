@@ -99,8 +99,21 @@ export async function compressImage(
 }
 
 // ===========================================================================
-// sha256Hex
+// extractQrIdentifier & sha256
 // ===========================================================================
+
+/**
+ * Extracts canonical 'EQS-XXXXXXXXXX' identifier from raw scan text or string.
+ */
+export function extractQrIdentifier(raw: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  const match = trimmed.match(/EQS-[0-9A-Fa-f]{10}/);
+  if (match) {
+    return match[0].toUpperCase();
+  }
+  return trimmed.toUpperCase();
+}
 
 /**
  * Returns the lowercase hex-encoded SHA-256 digest of a Blob.
@@ -114,6 +127,39 @@ export async function sha256Hex(blob: Blob): Promise<string> {
     .join('');
 }
 
+export const computeSha256 = sha256Hex;
+
+/**
+ * Fetches a signed URL for a photo, downloads bytes, recomputes SHA-256,
+ * and asserts cryptographic tamper-evidence.
+ */
+export async function verifyPhotoIntegrity(photo: {
+  storage_path: string;
+  sha256: string;
+}): Promise<{ ok: boolean; expected: string; actual: string }> {
+  const { data, error } = await supabase.storage
+    .from('custody-photos')
+    .createSignedUrl(photo.storage_path, 300);
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || 'Failed to generate signed URL for integrity verification');
+  }
+
+  const response = await fetch(data.signedUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download photo for verification: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const actual = await sha256Hex(blob);
+  const expected = photo.sha256.toLowerCase();
+
+  return {
+    ok: actual.toLowerCase() === expected,
+    expected,
+    actual,
+  };
+}
 // ===========================================================================
 // custodyPhotoPath
 // ===========================================================================
@@ -268,6 +314,7 @@ export async function submitCheckOut(args: {
   condition:       ConditionRating;
   notes:           string;
   accessoryChecks?: AccessoryCheckInput[];
+  qrIdentifier:    string;
   onPhotoProgress?: (slot: string, pct: number) => void;
 }): Promise<Booking> {
   // Upload phase — parallel, duplicate-tolerant
@@ -325,6 +372,7 @@ export async function submitCheckOut(args: {
     condition:       args.condition,
     notes:           args.notes,
     accessoryChecks: args.accessoryChecks,
+    qrIdentifier:    args.qrIdentifier,
   });
 }
 
@@ -344,6 +392,7 @@ export async function submitCheckIn(args: {
   condition:       ConditionRating;
   notes:           string;
   accessoryChecks?: AccessoryCheckInput[];
+  qrIdentifier:    string;
   onPhotoProgress?: (slot: string, pct: number) => void;
 }): Promise<Booking> {
   const uploaded = await Promise.all(
@@ -398,6 +447,7 @@ export async function submitCheckIn(args: {
     condition:       args.condition,
     notes:           args.notes,
     accessoryChecks: args.accessoryChecks,
+    qrIdentifier:    args.qrIdentifier,
   });
 }
 

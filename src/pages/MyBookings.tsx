@@ -2,17 +2,12 @@ import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Search,
-  Calendar,
-  Clock,
-  Filter,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
   AlertTriangle,
   FileText,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { BookingLifecycle } from '@/components/shared/BookingLifecycle';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -142,36 +137,68 @@ export function MyBookings() {
       ) : (
         <div className="grid gap-4">
           {filteredBookings.map(b => (
-            <div key={b.id} className="surface p-4 rounded-xl flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <img src={b.resourceImage} alt={b.resourceTitle} className="h-16 w-16 rounded-lg object-cover" />
-                <div>
-                  <h4 className="font-bold text-sm">{b.resourceTitle}</h4>
-                  <p className="text-xs text-muted-foreground">ID: {b.id} • {new Date(b.startTime).toLocaleDateString()}</p>
+            <div key={b.id} className="surface p-5 rounded-2xl border border-border/80 shadow-xs space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/60">
+                <div className="flex items-center gap-3.5">
+                  <img src={b.resourceImage} alt={b.resourceTitle} className="h-12 w-12 rounded-xl object-cover border border-border shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-sm text-foreground">{b.resourceTitle}</h4>
+                    <p className="text-xs text-muted-foreground font-mono">
+                      {new Date(b.startTime).toLocaleString()} – {new Date(b.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge
+                    status={b.status}
+                    decisionNote={b.decision_note || (b as any).decisionNote}
+                    cancelledByAdmin={b.status === 'cancelled' && !!(b.decision_note || (b as any).decidedBy)}
+                  />
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <StatusBadge status={b.status} />
-                {(b.status === 'pending' || b.status === 'approved') && (
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="text-destructive">Cancel</Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                        <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Back</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleCancel(b.id)}>Confirm Cancellation</AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                )}
-                <Link to={`/app/bookings/${b.id}`}>
-                  <Button variant="outline" size="sm">Details</Button>
-                </Link>
+
+              {/* Stepper */}
+              <BookingLifecycle
+                status={b.status}
+                createdAt={b.created_at || (b as any).createdAt}
+                decidedAt={b.decided_at || (b as any).decidedAt}
+                decisionNote={b.decision_note || (b as any).decisionNote}
+              />
+
+              <div className="pt-2 flex items-center justify-between border-t border-border/40">
+                <span className="text-xs text-muted-foreground">
+                  Ref ID: <span className="font-mono">{b.id.slice(0, 8)}</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  {(b.status === 'pending' || (b.status === 'approved' && Date.now() < new Date(b.startTime).getTime())) && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-xs text-destructive hover:bg-destructive/10 h-8">
+                          Cancel Request
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Cancel this reservation?</AlertDialogTitle>
+                          <AlertDialogDescription className="text-xs">
+                            Your reservation will be released and any matching waitlist requests will be notified.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Back</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleCancel(b.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs font-semibold">
+                            Confirm Cancellation
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                  <Link to={`/app/bookings/${b.id}`}>
+                    <Button variant="outline" size="sm" className="text-xs h-8">
+                      View Custody Details
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
           ))}

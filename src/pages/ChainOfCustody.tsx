@@ -642,6 +642,29 @@ export function ChainOfCustody() {
                     </Button>
                   </Link>
                 ))}
+                {scannedAsset.blocked && scannedAsset.blocked.length > 0 && (
+                  <div className="w-full space-y-2 pt-1">
+                    {scannedAsset.blocked.map((item) => (
+                      <div
+                        key={item.booking_id}
+                        className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                          item.reason === 'booking_pending_approval'
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300'
+                            : 'bg-destructive/10 border-destructive/30 text-destructive'
+                        }`}
+                      >
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>
+                          {item.reason === 'booking_pending_approval'
+                            ? 'Waiting for admin approval. You can check out once your request is approved.'
+                            : item.reason === 'booking_rejected'
+                            ? 'This booking request was declined by an administrator.'
+                            : 'This booking was cancelled.'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {scannedAsset.can_audit && (
                   <Button
@@ -655,7 +678,7 @@ export function ChainOfCustody() {
                   </Button>
                 )}
 
-                {scannedAsset.actions.length === 0 && !scannedAsset.can_audit && (
+                {scannedAsset.actions.length === 0 && (!scannedAsset.blocked || scannedAsset.blocked.length === 0) && !scannedAsset.can_audit && (
                   <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Info className="h-4 w-4 text-muted-foreground" />
                     <span>No active reservation ready for handover on this equipment right now.</span>

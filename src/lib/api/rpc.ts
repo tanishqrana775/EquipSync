@@ -113,6 +113,21 @@ export async function cancelBooking(bookingId: string): Promise<Booking> {
 }
 
 // ---------------------------------------------------------------------------
+// admin_cancel_booking (admin, approved bookings before start)
+// ---------------------------------------------------------------------------
+export async function adminCancelBooking(args: {
+  bookingId: string;
+  note?: string | null;
+}): Promise<Booking> {
+  return unwrap(
+    await supabase.rpc('admin_cancel_booking', {
+      p_booking_id: args.bookingId,
+      p_note: args.note ?? null,
+    })
+  ) as Booking;
+}
+
+// ---------------------------------------------------------------------------
 // release_booking  (owner, approved only)
 // ---------------------------------------------------------------------------
 export async function releaseBooking(bookingId: string): Promise<Booking> {
@@ -422,6 +437,7 @@ export interface ResolvedAssetQr {
   asset_tag: string;
   status: string;
   actions: Array<{ type: 'checkout' | 'return'; booking_id: string }>;
+  blocked?: Array<{ booking_id: string; reason: string }>;
   can_audit: boolean;
 }
 

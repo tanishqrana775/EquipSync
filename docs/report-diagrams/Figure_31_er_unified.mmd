@@ -1,0 +1,275 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+erDiagram
+    institutions {
+        uuid id PK
+        text name
+        text slug
+        text domain
+        text type
+        text status
+        boolean domain_proof
+        text website_url
+        text contact_phone
+        text registration_id
+        text_array allowed_domains
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    profiles {
+        uuid id PK
+        uuid institution_id FK
+        enum_user_role role
+        enum_user_type user_type
+        text full_name
+        text campus_id
+        text department
+        text job_title
+        enum_verification_status verification_status
+        text verification_method
+        uuid verified_by FK
+        timestamptz verified_at
+        text avatar_url
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    resources {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        enum_resource_kind kind
+        text category
+        text description
+        text location
+        text asset_tag
+        text qr_identifier
+        text image_path
+        boolean is_available
+        text status
+        text_array required_photo_slots
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    resource_categories {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        text description
+        timestamptz created_at
+    }
+
+    eligibility_rules {
+        uuid resource_id PK_FK
+        boolean requires_approval
+        boolean requires_supervision
+        user_type_array allowed_user_types
+        int max_duration_minutes
+        int min_lead_time_minutes
+        int max_advance_days
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    resource_accessories {
+        uuid id PK
+        uuid resource_id FK
+        text name
+        text description
+        boolean required
+        timestamptz created_at
+    }
+
+    resource_availability_windows {
+        uuid id PK
+        uuid resource_id FK
+        int day_of_week
+        time start_time
+        time end_time
+        timestamptz created_at
+    }
+
+    resource_required_qualifications {
+        uuid resource_id PK_FK
+        uuid qualification_id PK_FK
+    }
+
+    resource_evidence {
+        uuid id PK
+        uuid resource_id FK
+        text file_path
+        text title
+        timestamptz created_at
+    }
+
+    qualifications {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        text description
+        text code
+        timestamptz created_at
+    }
+
+    user_qualifications {
+        uuid id PK
+        uuid user_id FK
+        uuid qualification_id FK
+        text document_path
+        enum_verification_status status
+        uuid verified_by FK
+        timestamptz verified_at
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    bookings {
+        uuid id PK
+        uuid resource_id FK
+        uuid user_id FK
+        uuid institution_id FK
+        timestamptz start_at
+        timestamptz end_at
+        enum_booking_status status
+        text purpose
+        text supervisor_name
+        uuid approved_by FK
+        timestamptz approved_at
+        text rejection_reason
+        uuid decided_by FK
+        timestamptz decided_at
+        text decision_note
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    custody_events {
+        uuid id PK
+        uuid booking_id FK
+        enum_custody_phase phase
+        uuid actor_id FK
+        enum_condition_rating condition
+        text notes
+        jsonb accessory_checks
+        boolean qr_verified
+        boolean flagged
+        text_array flag_reasons
+        timestamptz created_at
+    }
+
+    custody_photos {
+        uuid id PK
+        uuid booking_id FK
+        enum_custody_phase phase
+        text slot
+        text storage_path
+        uuid taken_by FK
+        text sha256
+        timestamptz client_captured_at
+        timestamptz created_at
+    }
+
+    asset_audits {
+        uuid id PK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid performed_by FK
+        enum_condition_rating condition
+        jsonb accessory_checks
+        jsonb photos
+        text notes
+        boolean flagged
+        timestamptz created_at
+    }
+
+    incidents {
+        uuid id PK
+        uuid booking_id FK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid reported_by FK
+        enum_incident_severity severity
+        text type
+        text description
+        enum_incident_status status
+        text resolution
+        text resolution_notes
+        uuid resolved_by FK
+        timestamptz resolved_at
+        timestamptz created_at
+    }
+
+    waitlist_entries {
+        uuid id PK
+        uuid resource_id FK
+        uuid user_id FK
+        uuid institution_id FK
+        timestamptz desired_start
+        timestamptz desired_end
+        enum_waitlist_status status
+        timestamptz offered_at
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    released_slots {
+        uuid id PK
+        uuid original_booking_id FK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid released_by FK
+        timestamptz slot_start
+        timestamptz slot_end
+        enum_slot_status status
+        uuid claimed_by FK
+        timestamptz claimed_at
+        timestamptz created_at
+    }
+
+    audit_log {
+        uuid id PK
+        uuid institution_id FK
+        uuid actor_id FK
+        text action
+        text entity_type
+        uuid entity_id
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        text type
+        text title
+        text message
+        text link
+        boolean read
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    institutions ||--o{ profiles : "has"
+    institutions ||--o{ resources : "owns"
+    institutions ||--o{ qualifications : "defines"
+    institutions ||--o{ resource_categories : "defines"
+    resources ||--|| eligibility_rules : "has"
+    resources ||--o{ resource_accessories : "has"
+    resources ||--o{ resource_availability_windows : "schedules"
+    resources ||--o{ resource_required_qualifications : "requires"
+    resources ||--o{ resource_evidence : "evidenced_by"
+    profiles ||--o{ user_qualifications : "holds"
+    qualifications ||--o{ user_qualifications : "certified_by"
+    resources ||--o{ bookings : "reserves"
+    profiles ||--o{ bookings : "makes"
+    bookings ||--o{ custody_events : "tracks"
+    bookings ||--o{ custody_photos : "photographs"
+    resources ||--o{ asset_audits : "audits"
+    bookings ||--o{ incidents : "disputes"
+    resources ||--o{ waitlist_entries : "queues"
+    bookings ||--o{ released_slots : "releases"
+    institutions ||--o{ audit_log : "records"
+    profiles ||--o{ notifications : "notified"

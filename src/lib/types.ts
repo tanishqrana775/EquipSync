@@ -91,10 +91,15 @@ export interface Resource {
 export type BookingStatus =
   | 'pending'
   | 'approved'
+  | 'rejected'
   | 'active'
+  | 'checked_out'
+  | 'returned'
   | 'completed'
+  | 'closed'
   | 'cancelled'
-  | 'overdue';
+  | 'overdue'
+  | 'disputed';
 
 export interface Booking {
   id: string;
@@ -114,6 +119,22 @@ export interface Booking {
   returnCode: string;
   chainOfCustodyId: string;
   createdAt: string;
+  supervisorName?: string | null;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  decisionNote?: string | null;
+  // Database compatibility aliases
+  start_at?: string;
+  end_at?: string;
+  user_id?: string;
+  resource_id?: string;
+  resource_name?: string;
+  created_at?: string;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  supervisor_name?: string | null;
+  resource?: { name: string; kind?: string; category?: string; image_path?: string };
 }
 
 export type CustodyStage =

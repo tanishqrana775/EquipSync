@@ -6,6 +6,7 @@ import { ForgotPassword } from '@/pages/ForgotPassword';
 import { MyBookings } from '@/pages/MyBookings';
 import { DisputeResolution } from '@/pages/DisputeResolution';
 import { OrganizationSettings } from '@/pages/OrganizationSettings';
+import { BookingRequests } from '@/pages/BookingRequests';
 import { InstitutionDashboard } from '@/pages/InstitutionDashboard';
 import { UserDashboard } from '@/pages/UserDashboard';
 import { ResourceManagement } from '@/pages/ResourceManagement';
@@ -70,6 +71,7 @@ export function App() {
         >
           <Route index element={<AppRedirect />} />
           <Route path="institution" element={<InstitutionDashboard />} />
+          <Route path="institution/requests" element={<BookingRequests />} />
           <Route path="institution/resources" element={<ResourceManagement />} />
           <Route path="institution/disputes" element={<DisputeResolution />} />
           <Route path="institution/settings" element={<OrganizationSettings />} />

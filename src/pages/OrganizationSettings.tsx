@@ -4,7 +4,7 @@
  * Allows tenant administrators to configure verified email domains for automatic member onboarding.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Globe,
@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Users,
   Check,
+  Building,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { GlassCard } from '@/components/shared/GlassCard';
@@ -85,6 +86,55 @@ export function OrganizationSettings() {
     enabled: !!profile?.institution_id,
   });
 
+  // 1b. Fetch organization profile (B2B details, domain_proof, contact)
+  const { data: orgProfile, refetch: refetchOrgProfile } = useQuery({
+    queryKey: ['org_profile', profile?.institution_id],
+    queryFn: async () => {
+      if (!profile?.institution_id) return null;
+      const { data, error } = await supabase
+        .from('institutions')
+        .select('*')
+        .eq('id', profile.institution_id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!profile?.institution_id,
+  });
+
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [contactPhoneInput, setContactPhoneInput] = useState('');
+  const [isUpdatingPhone, setIsUpdatingPhone] = useState(false);
+
+  useEffect(() => {
+    if (orgProfile?.contact_phone) {
+      setContactPhoneInput(orgProfile.contact_phone);
+    }
+  }, [orgProfile?.contact_phone]);
+
+  const handleUpdatePhone = async () => {
+    if (!profile?.institution_id) return;
+    const phonePattern = /^\+?[0-9 ()-]{7,20}$/;
+    if (!phonePattern.test(contactPhoneInput.trim())) {
+      toast.error('Please enter a valid contact phone number (7-20 digits).');
+      return;
+    }
+    try {
+      setIsUpdatingPhone(true);
+      const { error } = await supabase
+        .from('institutions')
+        .update({ contact_phone: contactPhoneInput.trim() })
+        .eq('id', profile.institution_id);
+      if (error) throw error;
+      toast.success('Contact phone number updated.');
+      setEditingPhone(false);
+      await refetchOrgProfile();
+    } catch (err) {
+      toastError(err, 'Failed to update contact phone');
+    } finally {
+      setIsUpdatingPhone(false);
+    }
+  };
   // 2. Fetch member verification stats
   const { data: memberStats = { autoVerified: 0, manualVerified: 0, total: 0 } } = useQuery({
     queryKey: ['org_member_stats', profile?.institution_id],
@@ -184,6 +234,105 @@ export function OrganizationSettings() {
         title="Organization Settings"
         description="Configure domain auto-verification, institutional details, and member verification policies."
       />
+
+      {/* Organization Profile Card */}
+      <div className="surface p-6 rounded-2xl border border-border/80 shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-border/60">
+          <div className="flex items-center gap-2">
+            <Building className="h-5 w-5 text-primary" />
+            <div>
+              <h3 className="text-base font-bold text-foreground">Organization Profile</h3>
+              <p className="text-xs text-muted-foreground">Institutional identity, domain status, and administrative contact details.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge
+              className={
+                orgProfile?.status === 'active'
+                  ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs'
+                  : 'bg-amber-500/10 text-amber-600 border border-amber-500/20 text-xs'
+              }
+            >
+              Status: {orgProfile?.status === 'active' ? 'Active' : 'Pending Confirmation'}
+            </Badge>
+
+            {orgProfile?.domain_proof ? (
+              <Badge className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 text-xs font-semibold gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                <span>Verified Domain</span>
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                Self-Declared
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase block">Legal Name</span>
+            <span className="font-semibold text-foreground text-sm block">{orgProfile?.name || institutionName || '—'}</span>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase block">Type</span>
+            <span className="font-semibold text-foreground text-sm block">{orgProfile?.type || '—'}</span>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase block">Official Website</span>
+            {orgProfile?.website_url ? (
+              <a
+                href={orgProfile.website_url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-primary hover:underline truncate block text-sm"
+              >
+                {orgProfile.website_url}
+              </a>
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase block">Registration / Tax ID</span>
+            <span className="font-mono text-muted-foreground text-sm block">{orgProfile?.registration_id || 'Not specified'}</span>
+          </div>
+        </div>
+
+        {/* Contact Phone (editable) */}
+        <div className="pt-3 border-t border-border/60 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-muted-foreground uppercase text-[11px]">Contact Phone:</span>
+            {editingPhone ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={contactPhoneInput}
+                  onChange={(e) => setContactPhoneInput(e.target.value)}
+                  placeholder="+1 (555) 019-2834"
+                  className="h-8 text-xs font-mono w-48"
+                />
+                <Button size="sm" onClick={handleUpdatePhone} disabled={isUpdatingPhone} className="h-8 px-2 text-xs">
+                  {isUpdatingPhone ? 'Saving...' : 'Save'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditingPhone(false)} className="h-8 px-2 text-xs">
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <span className="font-mono font-semibold text-foreground">{orgProfile?.contact_phone || 'None configured'}</span>
+            )}
+          </div>
+
+          {!editingPhone && (
+            <Button size="sm" variant="outline" onClick={() => setEditingPhone(true)} className="h-7 text-xs">
+              Edit Phone
+            </Button>
+          )}
+        </div>
+      </div>
 
       {/* Admin Public Email Warning Hint */}
       {isAdminOnPublicEmail && (

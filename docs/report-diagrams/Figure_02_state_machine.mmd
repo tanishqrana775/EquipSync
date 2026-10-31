@@ -1,0 +1,30 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+stateDiagram-v2
+    [*] --> pending: request_booking (requires_approval = true)
+    [*] --> approved: request_booking (requires_approval = false)
+
+    state "Approval Lock Engaged" as LockState {
+        pending --> approved: decide_booking (approve = true, row lock)
+        pending --> rejected: decide_booking (approve = false, note logged)
+        pending --> cancelled: cancel_booking (by borrower)
+        pending --> cancelled: admin_cancel_booking (by admin with note)
+        pending --> pending: check_out / verify_asset_qr [RAISES booking_pending_approval]
+    }
+
+    approved --> cancelled: cancel_booking (by borrower)
+    approved --> cancelled: admin_cancel_booking (by admin with note)
+    approved --> released: release_booking (surrendered to peer pool)
+    approved --> checked_out: check_out_booking (window ok, QR verified, SHA-256 hashes, checklist ok)
+
+    released --> approved: claim_released_slot (peer claim)
+
+    checked_out --> returned: check_in_booking (QR verified, photos, 5-tier condition, checklist)
+
+    returned --> closed: inspect_return (clean inspection, no degradation, incidents resolved no_fault)
+    returned --> disputed: inspect_return (condition degraded or missing accessories, incident opened)
+
+    disputed --> closed: resolve_dispute (admin adjudication: borrower_responsible, no_fault, shared)
+
+    rejected --> [*]
+    cancelled --> [*]
+    closed --> [*]

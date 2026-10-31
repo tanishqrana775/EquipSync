@@ -204,9 +204,27 @@ export function InstitutionSearchAutocomplete({
                     <Building className="h-3.5 w-3.5 shrink-0 opacity-70" />
                     <span className="truncate font-semibold text-foreground">{inst.name}</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-mono uppercase shrink-0">
-                    {inst.type}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {inst.domain_proof ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full"
+                        title="Domain verified against official organization website"
+                      >
+                        <Check className="h-3 w-3" />
+                        <span>Verified domain</span>
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full"
+                        title="Self-declared by organization administrator"
+                      >
+                        Self-declared
+                      </span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground font-mono uppercase">
+                      {inst.type}
+                    </span>
+                  </div>
                 </div>
               );
             })

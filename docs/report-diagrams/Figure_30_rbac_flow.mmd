@@ -1,0 +1,46 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+flowchart TD
+    User([User Request / Operation]) --> AuthGate{JWT Present?}
+
+    AuthGate -- No --> AnonRole[Role: anon]
+    AnonRole --> PublicOps{Requested Endpoint?}
+    PublicOps -- get_public_stats / organization_name_available / search_institutions --> AllowPublic[ALLOW: Public Aggregate / Availability Data]
+    PublicOps -- Any transactional read or write --> DenyAnon[DENY: 401 / 403 Forbidden]
+
+    AuthGate -- Yes --> ParseToken[Verify JWT & Load Profile]
+    ParseToken --> VerificationCheck{Verification Status?}
+
+    VerificationCheck -- pending / rejected --> UnverifiedUser[Unverified Member]
+    UnverifiedUser --> UnverifiedOps{Requested Operation?}
+    UnverifiedOps -- Browse catalog in tenant / View profile --> AllowUnverified[ALLOW: Read Resources in Tenant]
+    UnverifiedOps -- request_booking / claim_released_slot --> DenyUnverified[DENY: not_verified Exception]
+
+    VerificationCheck -- verified --> CheckRole{Profile Role}
+
+    CheckRole -- member --> VerifiedMember[Verified Member<br/>verification_method: admin or domain]
+    CheckRole -- institution_admin --> OrgAdmin[Organization Admin<br/>domain_proof: true or false]
+
+    VerifiedMember --> MemberOps{Member Operation}
+    MemberOps -- request_booking --> MemberRPC1[RPC: Check eligibility rules, duration & GiST overlap]
+    MemberOps -- check_out_booking --> MemberRPC2[RPC: Assert approved, 15m window, QR code, SHA-256 hashes]
+    MemberOps -- check_in_booking --> MemberRPC3[RPC: QR code, photos, 5-tier condition, checklist]
+    MemberOps -- claim_released_slot --> MemberRPC4[RPC: Check tenant match & slot open]
+    MemberOps -- Direct SQL Mutation --> DenyDirectWrite[DENY: Direct table writes revoked]
+
+    OrgAdmin --> AdminOps{Admin Operation}
+    AdminOps -- decide_booking --> AdminRPC1[RPC: Approve or reject with row lock & decision note]
+    AdminOps -- admin_cancel_booking --> AdminRPC2[RPC: Revoke reservation with mandatory reason & audit log]
+    AdminOps -- verify_member / qual --> AdminRPC3[RPC: Manual vetting of non-domain affiliate accounts]
+    AdminOps -- inspect_return --> AdminRPC4[RPC: Side-by-side comparison & server-computed dispute outcome]
+    AdminOps -- record_asset_audit --> AdminRPC5[RPC: Spot audit logging with photo hash & accessory checks]
+    AdminOps -- Direct SQL Mutation --> DenyDirectWrite
+
+    MemberRPC1 --> DBCommit[(PostgreSQL Commit)]
+    MemberRPC2 --> DBCommit
+    MemberRPC3 --> DBCommit
+    MemberRPC4 --> DBCommit
+    AdminRPC1 --> DBCommit
+    AdminRPC2 --> DBCommit
+    AdminRPC3 --> DBCommit
+    AdminRPC4 --> DBCommit
+    AdminRPC5 --> DBCommit

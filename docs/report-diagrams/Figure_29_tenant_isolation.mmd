@@ -1,0 +1,44 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+flowchart TB
+    subgraph OrgA ["Organization A: VIPS Advanced Robotics (UUID: 1111...)"]
+        UserA["Member A1 (User UUID: aaaa...)<br/>(Domain verified: @vips.edu)"]
+        AdminA["Admin A (User UUID: abcd...)<br/>(Domain proof: true)"]
+        ResA["Resource: 5-Axis CNC Mill<br/>(institution_id: 1111...)"]
+        BookA["Booking #101<br/>(status: approved)"]
+        StoreA["Storage Prefix: 1111.../101/checkout/"]
+        AuditA["Spot Audits: asset_audits<br/>(institution_id: 1111...)"]
+    end
+
+    subgraph WalledGardenBoundary ["Walled Garden Multi-Tenant Isolation & RLS Boundary"]
+        RLSPredicate["current_institution_id() Filter<br/>Every query checks: institution_id = profile.institution_id"]
+        DomainBarrier["Domain Auto-Verification Matrix<br/>Allowed domains unique per tenant; cross-domain auto-join blocked"]
+        RPCGate["SECURITY DEFINER RPC Boundary Checks<br/>request_booking / check_out raise 'forbidden' on cross-tenant UUID"]
+        StoragePolicy["Storage Path Isolation Policy<br/>(string_to_array(name, '/'))[1]::uuid = current_institution_id()"]
+    end
+
+    subgraph OrgB ["Organization B: DIET Fabrication Hub (UUID: 2222...)"]
+        UserB["Member B1 (User UUID: bbbb...)<br/>(Domain verified: @diet.edu)"]
+        AdminB["Admin B (User UUID: efgh...)<br/>(Domain proof: true)"]
+        ResB["Resource: Laser Doppler Vibrometer<br/>(institution_id: 2222...)"]
+        BookB["Booking #202<br/>(status: pending)"]
+        StoreB["Storage Prefix: 2222.../202/checkout/"]
+        AuditB["Spot Audits: asset_audits<br/>(institution_id: 2222...)"]
+    end
+
+    UserA -->|"Query resources"| RLSPredicate
+    RLSPredicate -->|"ALLOW: Returns ResA Only"| ResA
+    UserA -.->|"Attempt query ResB"| RLSPredicate
+    RLSPredicate -.->|"BLOCKED: Returns 0 rows"| ResB
+
+    UserA -->|"Upload handover photos"| StoragePolicy
+    StoragePolicy -->|"ALLOW: Matching Prefix"| StoreA
+    UserA -.->|"Attempt write to StoreB"| StoragePolicy
+    StoragePolicy -.->|"BLOCKED: Path Mismatch"| StoreB
+
+    UserA -.->|"Attempt request_booking(ResB)"| RPCGate
+    RPCGate -.->|"BLOCKED: Exception 'forbidden'"| ResB
+
+    UserB -->|"Query resources"| RLSPredicate
+    RLSPredicate -->|"ALLOW: Returns ResB Only"| ResB
+    UserB -.->|"Attempt read AuditA"| RLSPredicate
+    RLSPredicate -.->|"BLOCKED: Zero Rows"| AuditA

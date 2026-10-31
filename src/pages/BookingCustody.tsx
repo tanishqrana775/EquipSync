@@ -19,6 +19,7 @@ import {
 import { PageHeader } from '@/components/shared/PageHeader';
 import { GlassCard } from '@/components/shared/GlassCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { BookingLifecycle } from '@/components/shared/BookingLifecycle';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -185,6 +186,57 @@ export function BookingCustody() {
           <span>Custody Status: {custody.custodyStatus.toUpperCase()}</span>
         </Badge>
       </PageHeader>
+
+      {/* Booking Lifecycle Stepper */}
+      <div className="surface p-5 rounded-2xl border border-border/80 shadow-xs">
+        <BookingLifecycle
+          status={booking.status}
+          createdAt={booking.created_at}
+          decidedAt={booking.decided_at}
+          decisionNote={booking.decision_note}
+        />
+      </div>
+
+      {/* Status Warning & Lock Alerts */}
+      {booking.status === 'pending' && (
+        <div className="surface p-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 flex items-start gap-3.5 text-xs animate-fade-in shadow-xs">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-bold text-sm text-foreground block">
+              Waiting for Administrator Approval
+            </span>
+            <p className="text-muted-foreground leading-relaxed">
+              Waiting for admin approval. You can check out once your request is approved.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {booking.status === 'rejected' && (
+        <div className="surface p-6 rounded-2xl border border-destructive/30 bg-destructive/10 text-destructive flex items-start gap-3.5 text-xs animate-fade-in shadow-xs">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <span className="font-bold text-sm block">Reservation Request Declined</span>
+            <p className="leading-relaxed">
+              This reservation was declined by an administrator
+              {booking.decision_note ? `: "${booking.decision_note}"` : '.'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {booking.status === 'cancelled' && (
+        <div className="surface p-6 rounded-2xl border border-border bg-muted/40 text-muted-foreground flex items-start gap-3.5 text-xs animate-fade-in shadow-xs">
+          <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-foreground" />
+          <div className="space-y-1">
+            <span className="font-bold text-sm text-foreground block">Reservation Cancelled</span>
+            <p className="leading-relaxed">
+              This reservation has been cancelled
+              {booking.decision_note ? `: "${booking.decision_note}"` : '.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Incident Report Collapsible Form */}
       {showIncidentForm && (

@@ -1,0 +1,134 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+erDiagram
+    bookings {
+        uuid id PK
+        uuid resource_id FK
+        uuid user_id FK
+        uuid institution_id FK
+        timestamptz start_at
+        timestamptz end_at
+        enum_booking_status status
+        text purpose
+        text supervisor_name
+        uuid approved_by FK
+        timestamptz approved_at
+        text rejection_reason
+        uuid decided_by FK
+        timestamptz decided_at
+        text decision_note
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    custody_events {
+        uuid id PK
+        uuid booking_id FK
+        enum_custody_phase phase
+        uuid actor_id FK
+        enum_condition_rating condition
+        text notes
+        jsonb accessory_checks
+        boolean qr_verified
+        boolean flagged
+        text_array flag_reasons
+        timestamptz created_at
+    }
+
+    custody_photos {
+        uuid id PK
+        uuid booking_id FK
+        enum_custody_phase phase
+        text slot
+        text storage_path
+        uuid taken_by FK
+        text sha256
+        timestamptz client_captured_at
+        timestamptz created_at
+    }
+
+    asset_audits {
+        uuid id PK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid performed_by FK
+        enum_condition_rating condition
+        jsonb accessory_checks
+        jsonb photos
+        text notes
+        boolean flagged
+        timestamptz created_at
+    }
+
+    incidents {
+        uuid id PK
+        uuid booking_id FK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid reported_by FK
+        enum_incident_severity severity
+        text type
+        text description
+        enum_incident_status status
+        text resolution
+        text resolution_notes
+        uuid resolved_by FK
+        timestamptz resolved_at
+        timestamptz created_at
+    }
+
+    waitlist_entries {
+        uuid id PK
+        uuid resource_id FK
+        uuid user_id FK
+        uuid institution_id FK
+        timestamptz desired_start
+        timestamptz desired_end
+        enum_waitlist_status status
+        timestamptz offered_at
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    released_slots {
+        uuid id PK
+        uuid original_booking_id FK
+        uuid resource_id FK
+        uuid institution_id FK
+        uuid released_by FK
+        timestamptz slot_start
+        timestamptz slot_end
+        enum_slot_status status
+        uuid claimed_by FK
+        timestamptz claimed_at
+        timestamptz created_at
+    }
+
+    audit_log {
+        uuid id PK
+        uuid institution_id FK
+        uuid actor_id FK
+        text action
+        text entity_type
+        uuid entity_id
+        jsonb metadata
+        timestamptz created_at
+    }
+
+    notifications {
+        uuid id PK
+        uuid user_id FK
+        text type
+        text title
+        text message
+        text link
+        boolean read
+        timestamptz read_at
+        timestamptz created_at
+    }
+
+    bookings ||--o{ custody_events : "generates"
+    bookings ||--o{ custody_photos : "evidenced_by"
+    bookings ||--o{ incidents : "subject_to"
+    bookings ||--o{ released_slots : "relinquished_to"
+    bookings ||--o{ audit_log : "tracked_in"
+    bookings ||--o{ asset_audits : "correlated_with"

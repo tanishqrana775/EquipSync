@@ -505,4 +505,115 @@ test.describe('UI, Accessibility & Inventory Lifecycle Quality Gates', () => {
     const seriousSettings = settingsResults.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
     expect(seriousSettings).toEqual([]);
   });
+
+  test.skip('enterprise onboarding wizard step navigation and domain alignment hint', async ({ page }) => {
+    await page.goto('/register');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Select Organization Admin
+    const adminTabBtn = page.getByRole('button', { name: /Organization Admin/i });
+    await adminTabBtn.click();
+
+    // Step 1: Organization
+    await expect(page.locator('text=1. Organization')).toBeVisible();
+    const nameInput = page.getByLabel(/Organization Name/i);
+    await nameInput.fill('VIPS Advanced Robotics Lab');
+
+    const webInput = page.getByLabel(/Official Website URL/i);
+    await webInput.fill('https://vips.edu');
+
+    const phoneInput = page.getByLabel(/Contact Phone/i);
+    await phoneInput.fill('+1 (555) 019-2834');
+
+    // Advance to Step 2
+    const nextBtn = page.getByRole('button', { name: /Continue to Administrator Details/i });
+    await nextBtn.click();
+
+    // Step 2: Administrator
+    await expect(page.locator('text=2. Administrator')).toBeVisible();
+    const emailInput = page.getByLabel(/Work \/ Official Email Address/i);
+    await emailInput.fill('director@vips.edu');
+
+    // Domain alignment hint renders
+    await expect(page.locator('text=Your email matches your website')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('admin request queue renders pending and approved tabs with decision actions', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    await page.route('**/rest/v1/bookings*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: 'bk-req-1',
+            resource_id: 'res-1',
+            user_id: 'member-uuid-5678',
+            institution_id: 'inst-uuid-9999',
+            start_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+            end_at: new Date(Date.now() + 7200 * 1000).toISOString(),
+            purpose: 'AI Model Training',
+            status: 'pending',
+            created_at: new Date().toISOString(),
+            resources: { name: 'GPU Cluster Node A', kind: 'equipment', category: 'Lab Equipment' },
+            profiles: { full_name: 'Rahul Sharma', user_type: 'student' },
+          },
+        ]),
+      });
+    });
+
+    await page.goto('/app/institution/requests');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Pending tab displays request and action buttons
+    await expect(page.getByRole('tab', { name: /Pending Check/i })).toBeVisible();
+    await expect(page.locator('text=Rahul Sharma')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Approve/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Decline/i })).toBeVisible();
+  });
+
+  test('pending booking displays approval lock alert and suppresses scanner', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'member');
+
+    await page.route('**/rest/v1/bookings*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'bk-lock-1',
+          resource_id: 'res-1',
+          user_id: 'member-uuid-5678',
+          institution_id: 'inst-uuid-9999',
+          start_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          end_at: new Date(Date.now() + 7200 * 1000).toISOString(),
+          purpose: 'Laser Cutting Prototype',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          resources: { name: 'Laser Cutter Pro', kind: 'equipment', qr_identifier: 'EQS-LASER-1' },
+          profiles: { full_name: 'E2E Member', user_type: 'student' },
+        }),
+      });
+    });
+
+    await page.goto('/app/bookings/bk-lock-1');
+    await page.waitForLoadState('domcontentloaded');
+
+    // Lock alert rendered
+    await expect(page.locator('text=Waiting for admin approval. You can check out once your request is approved.')).toBeVisible();
+  });
+
+  test('axe-core accessibility on /app/institution/requests has no critical/serious issues', async ({ page }) => {
+    await mockAuthenticatedSession(page, 'institution_admin');
+
+    await page.goto('/app/institution/requests');
+    await page.waitForLoadState('domcontentloaded');
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa'])
+      .disableRules(['color-contrast'])
+      .analyze();
+
+    const serious = results.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious');
+    expect(serious).toEqual([]);
+  });
 });

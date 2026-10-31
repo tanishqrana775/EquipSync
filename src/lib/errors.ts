@@ -32,8 +32,18 @@ const ERROR_MAP: Record<string, string> = {
   domain_already_claimed: 'This email domain has already been claimed by another organization.',
   domain_not_provable: 'You can only configure domains matching your confirmed administrator email address or its subdomains.',
   invalid_domain: 'Please enter a valid domain (e.g. example.edu or *.example.edu).',
+  booking_pending_approval: 'Waiting for administrator approval. You can check out once your request is approved.',
+  booking_rejected: 'This booking request was declined by an administrator.',
+  booking_cancelled: 'This booking was cancelled.',
+  note_too_long: 'Decision note cannot exceed 500 characters.',
+  organization_exists: 'An active organization with this name already exists. Please choose a different name.',
+  invalid_website: 'Please enter a valid website URL (e.g. https://example.edu).',
+  invalid_phone: 'Please enter a valid contact phone number (7 to 20 digits).',
+  invalid_organization_type: 'Please select a valid organization type.',
+  invalid_organization_name: 'Organization name must be between 3 and 120 characters.',
+  invalid_job_title: 'Official title must be between 2 and 80 characters.',
+  invalid_registration_id: 'Registration ID must be at most 40 characters.',
 };
-
 const ELIGIBILITY_REASON_MAP: Record<string, string> = {
   user_type_not_allowed: 'Your account type is not permitted to book this resource.',
   exceeds_max_duration: 'Requested duration exceeds the maximum allowed for this resource.',

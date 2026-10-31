@@ -1,0 +1,62 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+erDiagram
+    institutions {
+        uuid id PK
+        text name
+        text slug
+        text domain
+        text type
+        text status
+        boolean domain_proof
+        text website_url
+        text contact_phone
+        text registration_id
+        text_array allowed_domains
+        boolean is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    profiles {
+        uuid id PK
+        uuid institution_id FK
+        enum_user_role role
+        enum_user_type user_type
+        text full_name
+        text campus_id
+        text department
+        text job_title
+        enum_verification_status verification_status
+        text verification_method
+        uuid verified_by FK
+        timestamptz verified_at
+        text avatar_url
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    qualifications {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        text description
+        text code
+        timestamptz created_at
+    }
+
+    user_qualifications {
+        uuid id PK
+        uuid user_id FK
+        uuid qualification_id FK
+        text document_path
+        enum_verification_status status
+        uuid verified_by FK
+        timestamptz verified_at
+        timestamptz expires_at
+        timestamptz created_at
+    }
+
+    institutions ||--o{ profiles : "onboards"
+    institutions ||--o{ qualifications : "defines"
+    profiles ||--o{ user_qualifications : "earns"
+    qualifications ||--o{ user_qualifications : "assigned_to"

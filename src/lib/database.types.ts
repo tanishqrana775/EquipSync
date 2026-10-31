@@ -498,6 +498,11 @@ export type Database = {
           name: string
           type: string
           updated_at: string
+          website_url: string | null
+          contact_phone: string | null
+          registration_id: string | null
+          status: 'pending_email' | 'active'
+          domain_proof: boolean
         }
         Insert: {
           address?: string | null
@@ -509,6 +514,11 @@ export type Database = {
           name: string
           type: string
           updated_at?: string
+          website_url?: string | null
+          contact_phone?: string | null
+          registration_id?: string | null
+          status?: 'pending_email' | 'active'
+          domain_proof?: boolean
         }
         Update: {
           address?: string | null
@@ -520,6 +530,11 @@ export type Database = {
           name?: string
           type?: string
           updated_at?: string
+          website_url?: string | null
+          contact_phone?: string | null
+          registration_id?: string | null
+          status?: 'pending_email' | 'active'
+          domain_proof?: boolean
         }
         Relationships: []
       }
@@ -577,6 +592,7 @@ export type Database = {
           verification_method: 'admin' | 'domain' | null
           verification_status: Database["public"]["Enums"]["verification_status"]
           verified_at: string | null
+          job_title: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -590,6 +606,7 @@ export type Database = {
           verification_method?: 'admin' | 'domain' | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
           verified_at?: string | null
+          job_title?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -603,6 +620,7 @@ export type Database = {
           verification_method?: 'admin' | 'domain' | null
           verification_status?: Database["public"]["Enums"]["verification_status"]
           verified_at?: string | null
+          job_title?: string | null
         }
         Relationships: [
           {
@@ -1249,7 +1267,16 @@ export type Database = {
           id: string
           name: string
           type: string
+          domain_proof: boolean
         }[]
+      }
+      organization_name_available: {
+        Args: { p_name: string }
+        Returns: boolean
+      }
+      admin_cancel_booking: {
+        Args: { p_booking_id: string; p_note?: string | null }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
       }
       cancel_booking: {
         Args: { p_booking_id: string }

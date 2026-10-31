@@ -1443,6 +1443,104 @@ async function main() {
       }
     });
   }
+
+  // -------------------------------------------------------------------------
+  // 9. Migration 0013 Enterprise B2B Workflow & Hardened Approval Tests
+  // -------------------------------------------------------------------------
+  const { error: probe0013 } = await anonClient.rpc('organization_name_available', { p_name: 'Probe Organization' });
+  const is0013Applied = !probe0013 || (!probe0013.message.includes('schema cache') && !probe0013.message.includes('not found'));
+
+  if (!is0013Applied) {
+    console.log('\n  [NOTICE] Migration 0013_enterprise_b2b_workflow.sql not yet executed on remote database.');
+    console.log('  Skipping Migration 0013 assertions until applied via Supabase SQL Editor.\n');
+  } else {
+    await runStep('organization_name_available RPC rate-friendly check for anon', async () => {
+      const { data: avail, error: aErr } = await anonClient.rpc('organization_name_available', {
+        p_name: 'Completely Unique Org Name 99999',
+      });
+      if (aErr) throw aErr;
+      if (avail !== true) throw new Error('Expected unique name to be available');
+    });
+
+    await runStep('decide_booking permissions: member and cross-tenant admin forbidden', async () => {
+      // Member forbidden
+      const { error: mDecErr } = await memberA1Client.rpc('decide_booking', {
+        p_booking_id: booking1Id,
+        p_approve: true,
+      });
+      if (!mDecErr || !mDecErr.message.includes('forbidden')) {
+        throw new Error(`Expected forbidden for member decide_booking, got: ${mDecErr?.message}`);
+      }
+
+      // Tenant B admin forbidden on Tenant A booking
+      const { error: bDecErr } = await adminBClient.rpc('decide_booking', {
+        p_booking_id: booking1Id,
+        p_approve: true,
+      });
+      if (!bDecErr || !bDecErr.message.includes('forbidden')) {
+        throw new Error(`Expected forbidden for cross-tenant decide_booking, got: ${bDecErr?.message}`);
+      }
+    });
+
+    await runStep('pending lock: check_out_booking and verify_asset_qr return booking_pending_approval', async () => {
+      // Create a pending booking on resource R1
+      const { data: pBk, error: pBkErr } = await memberA1Client.rpc('request_booking', {
+        p_resource_id: resourceR1Id,
+        p_start: new Date(Date.now() + 10 * 3600 * 1000).toISOString(),
+        p_end: new Date(Date.now() + 12 * 3600 * 1000).toISOString(),
+        p_purpose: 'Pending lock test',
+        p_supervisor_name: null,
+      });
+      if (pBkErr) throw pBkErr;
+
+      if (pBk.status === 'pending') {
+        // verify_asset_qr on pending booking
+        const { error: vErr } = await memberA1Client.rpc('verify_asset_qr', {
+          p_booking_id: pBk.id,
+          p_qr: 'EQS-SAMPLE',
+          p_phase: 'checkout',
+        });
+        if (!vErr || !vErr.message.includes('booking_pending_approval')) {
+          throw new Error(`Expected booking_pending_approval from verify_asset_qr, got: ${vErr?.message}`);
+        }
+
+        // check_out_booking on pending booking
+        const { error: cErr } = await memberA1Client.rpc('check_out_booking', {
+          p_booking_id: pBk.id,
+          p_photos: [],
+          p_condition: 'good',
+          p_notes: '',
+          p_accessory_checks: [],
+          p_qr_identifier: 'EQS-SAMPLE',
+        });
+        if (!cErr || !cErr.message.includes('booking_pending_approval')) {
+          throw new Error(`Expected booking_pending_approval from check_out_booking, got: ${cErr?.message}`);
+        }
+      }
+    });
+
+    await runStep('tenant isolation sweep: cross-tenant direct queries return zero rows', async () => {
+      // Member B1 querying Tenant A's resources
+      const { data: bRes, error: bResErr } = await memberB1Client
+        .from('resources')
+        .select('id')
+        .eq('institution_id', instAId);
+      if (bResErr) throw bResErr;
+      if (bRes && bRes.length > 0) {
+        throw new Error('Tenant B member was able to select Tenant A resources!');
+      }
+
+      // Member B1 querying Tenant A's bookings
+      const { data: bBks, error: bBkErr } = await memberB1Client
+        .from('bookings')
+        .select('id')
+        .eq('institution_id', instAId);
+      if (bBkErr) throw bBkErr;
+      if (bBks && bBks.length > 0) {
+        throw new Error('Tenant B member was able to select Tenant A bookings!');
+      }
+    });
+  }
   // -------------------------------------------------------------------------
   // Summary Results
   // -------------------------------------------------------------------------

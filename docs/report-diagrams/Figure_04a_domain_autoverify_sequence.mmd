@@ -1,0 +1,40 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+sequenceDiagram
+    autonumber
+    actor User as User / Prospective Member
+    participant UI as React SPA (/register)
+    participant Auth as Supabase Auth (GoTrue)
+    participant DB as PostgreSQL Database
+    participant Admin as Organization Admin
+
+    User->>UI: Selects Organization & Enters Email (user@org.edu)
+    UI->>Auth: signUp({ email, password, raw_user_meta_data })
+    Auth->>DB: Trigger handle_new_user()
+    DB->>DB: Creates profile (verification_status = 'pending')
+    Auth-->>User: Dispatches Email OTP / Activation Link
+
+    alt User Confirms Email (OTP Token)
+        User->>UI: Submits 6-digit Email OTP (/verify-email)
+        UI->>Auth: verifyOtp({ email, token, type: 'signup' })
+        Auth->>DB: Updates email_confirmed_at = now()
+        DB->>DB: Trigger apply_domain_verification()
+        DB->>DB: Normalizes email domain (split_part(email, '@', 2))
+        DB->>DB: Checks allowed_domains of target organization
+
+        alt Domain Matches Allowed List (e.g. org.edu)
+            DB->>DB: Updates profile: verification_status = 'verified', verification_method = 'domain', verified_at = now()
+            DB->>DB: Inserts audit_log ('member.domain_verified')
+            DB->>DB: Creates in-app notification: "Verified automatically through your domain email address"
+            DB-->>UI: Session established (Role: verified member)
+            UI-->>User: Direct access to Walled Garden Catalog (/app/discover)
+        else Non-Domain / Public Provider (e.g. gmail.com)
+            DB->>DB: Leaves profile: verification_status = 'pending', verification_method = null
+            DB->>DB: Notifies Admin: "New member pending verification queue"
+            DB-->>UI: Session established (Role: unverified member)
+            UI-->>User: Displays pending banner ("Pending verification by organization's admin")
+            Admin->>UI: Opens Verification Queue (/app/institution)
+            Admin->>DB: verify_member(p_user_id, p_approve)
+            DB->>DB: Updates profile: verification_status = 'verified', verification_method = 'admin'
+            DB-->>User: Verification Notification Dispatched
+        end
+    end

@@ -1,0 +1,56 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+flowchart TB
+    subgraph ClientTier ["Client Tier (Browser SPA - Vercel Edge CDN)"]
+        UI["React 18 + Vite SPA<br/>Tailwind CSS & Radix UI Primitives"]
+        AuthContext["Auth Context & Sessions<br/>(JWT Storage & OTP Recovery)"]
+        TQ["TanStack Query Cache<br/>(Cache Invalidation & Optimistic UI)"]
+        Camera["Browser Camera Engine<br/>(1600px 80% JPEG Compression)"]
+        WebCrypto["Web Crypto API<br/>(crypto.subtle SHA-256 Hashing)"]
+        QRScanner["html5-qrcode Scanner<br/>& qrcode.react Label Generator"]
+    end
+
+    subgraph GatewayTier ["Supabase Managed Infrastructure (HTTPS / WSS Gateway)"]
+        AuthGw["Supabase Auth (GoTrue)<br/>Email OTP Confirmations & Custom SMTP"]
+        RestGw["PostgREST API Gateway<br/>(Client Table Writes REVOKED)"]
+        StorageGw["Supabase Storage Engine<br/>(Private & Public Tenant Buckets)"]
+        RealtimeGw["Supabase Realtime Engine<br/>(CDC WebSocket Change Feeds)"]
+    end
+
+    subgraph SecurityBoundary ["Zero-Trust Security & DB Enforcement Boundary"]
+        WalledGarden["Walled Garden Tenant Scoping<br/>(current_institution_id() RLS Predicates)"]
+        WriteRevoke["Write Privilege Revocation Matrix<br/>(Direct INSERT/UPDATE/DELETE Denied)"]
+        DefinerRPC["SECURITY DEFINER RPC Functions<br/>(search_path = '', Strict Tenant & Role Checks)"]
+        ApprovalLock["Booking Approval Lock<br/>(Blocks Handover with booking_pending_approval)"]
+    end
+
+    subgraph DBTier ["PostgreSQL 15 System of Record"]
+        CoreTables["20 Core Relational Tables<br/>(institutions, profiles, resources, bookings...)"]
+        GiST["btree_gist Exclusion Constraints<br/>(Mathematical Overlap Prevention)"]
+        StoragePolicies["Storage Row-Level Policies<br/>(Prefix Scoping & Immutable Uploads)"]
+        AuditTriggers["Audit Engine & Change Triggers<br/>(audit_log, asset_audits, notifications)"]
+    end
+
+    UI --> AuthContext
+    UI --> TQ
+    UI --> Camera
+    Camera --> WebCrypto
+    UI --> QRScanner
+
+    AuthContext -->|"Email OTP / Sign-Up"| AuthGw
+    UI -->|"SELECT (Filtered by RLS)"| RestGw
+    UI -->|"RPC Mutations Only"| RestGw
+    Camera -->|"Hashed Photos"| StorageGw
+    UI -->|"Live Notification Stream"| RealtimeGw
+
+    AuthGw -->|"auth.uid(), handle_new_user"| DBTier
+    RestGw --> WalledGarden
+    RestGw --> WriteRevoke
+    WriteRevoke -->|"Block Direct Writes"| CoreTables
+    RestGw --> DefinerRPC
+    DefinerRPC --> ApprovalLock
+    ApprovalLock -->|"Verified State Changes"| CoreTables
+    DefinerRPC -->|"Atomic Commits"| GiST
+    DefinerRPC -->|"Trigger Events"| AuditTriggers
+    StorageGw --> StoragePolicies
+    StoragePolicies -->|"Tenant Path Validation"| WalledGarden
+    AuditTriggers -->|"CDC Events"| RealtimeGw

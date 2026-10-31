@@ -1,0 +1,78 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+erDiagram
+    resources {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        enum_resource_kind kind
+        text category
+        text description
+        text location
+        text asset_tag
+        text qr_identifier
+        text image_path
+        boolean is_available
+        text status
+        text_array required_photo_slots
+        uuid created_by FK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    resource_categories {
+        uuid id PK
+        uuid institution_id FK
+        text name
+        text description
+        timestamptz created_at
+    }
+
+    eligibility_rules {
+        uuid resource_id PK_FK
+        boolean requires_approval
+        boolean requires_supervision
+        user_type_array allowed_user_types
+        int max_duration_minutes
+        int min_lead_time_minutes
+        int max_advance_days
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    resource_accessories {
+        uuid id PK
+        uuid resource_id FK
+        text name
+        text description
+        boolean required
+        timestamptz created_at
+    }
+
+    resource_availability_windows {
+        uuid id PK
+        uuid resource_id FK
+        int day_of_week
+        time start_time
+        time end_time
+        timestamptz created_at
+    }
+
+    resource_required_qualifications {
+        uuid resource_id PK_FK
+        uuid qualification_id PK_FK
+    }
+
+    resource_evidence {
+        uuid id PK
+        uuid resource_id FK
+        text file_path
+        text title
+        timestamptz created_at
+    }
+
+    resources ||--|| eligibility_rules : "configured_with"
+    resources ||--o{ resource_accessories : "includes"
+    resources ||--o{ resource_availability_windows : "operates_in"
+    resources ||--o{ resource_required_qualifications : "mandates"
+    resources ||--o{ resource_evidence : "documented_by"
+    resource_categories ||--o{ resources : "categorizes"

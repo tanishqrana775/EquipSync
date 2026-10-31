@@ -19,6 +19,7 @@ export interface Institution {
   id: string;
   name: string;
   type: string;
+  domain_proof?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,10 @@ export interface SignUpInstitutionArgs {
   fullName:        string;
   institutionName: string;
   institutionType: string;
+  websiteUrl:      string;
+  contactPhone:    string;
+  registrationId?: string;
+  jobTitle:        string;
   emailDomain?:    string;
   address?:        string;
 }
@@ -49,12 +54,16 @@ export async function signUpInstitution(args: SignUpInstitutionArgs) {
       options: {
         emailRedirectTo,
         data: {
-          role:             'institution_admin',
-          full_name:         args.fullName,
-          institution_name:  args.institutionName,
-          institution_type:  args.institutionType,
-          email_domain:      args.emailDomain ?? null,
-          address:           args.address ?? null,
+          role:              'institution_admin',
+          full_name:          args.fullName,
+          institution_name:   args.institutionName,
+          institution_type:   args.institutionType,
+          website_url:        args.websiteUrl,
+          contact_phone:      args.contactPhone,
+          registration_id:    args.registrationId ?? null,
+          job_title:          args.jobTitle,
+          email_domain:       args.emailDomain ?? null,
+          address:            args.address ?? null,
         },
       },
     })
@@ -253,6 +262,25 @@ export async function searchInstitutions(query: string): Promise<Institution[]> 
     await supabase.rpc('search_institutions', { p_query: trimmed })
   );
   return rows ?? [];
+}
+
+/**
+ * Checks if an active organization already exists with the given normalized name.
+ * Rate-limit friendly RPC that returns only boolean.
+ */
+export async function checkOrganizationNameAvailable(name: string): Promise<boolean> {
+  const trimmed = name.trim();
+  if (trimmed.length < 3 || trimmed.length > 120) {
+    return false;
+  }
+  try {
+    const available = unwrap<boolean>(
+      await supabase.rpc('organization_name_available', { p_name: trimmed })
+    );
+    return !!available;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

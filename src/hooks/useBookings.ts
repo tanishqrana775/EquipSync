@@ -12,6 +12,7 @@ import { mapDbBookingToUi } from '../lib/api/mappers';
 import {
   requestBooking as rpcRequestBooking,
   decideBooking as rpcDecideBooking,
+  adminCancelBooking as rpcAdminCancelBooking,
   cancelBooking as rpcCancelBooking,
   releaseBooking as rpcReleaseBooking,
   claimReleasedSlot as rpcClaimReleasedSlot,
@@ -182,6 +183,23 @@ export function useBookings(filters?: BookingFilters) {
     },
   });
 
+  const adminCancelBookingMutation = useMutation({
+    mutationFn: rpcAdminCancelBooking,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      void queryClient.invalidateQueries({ queryKey: ['institution_stats'] });
+      toast.success('Approved reservation revoked and slot returned to waitlist');
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('invalid_state')) {
+        toast.error('Cannot revoke: booking has already started or state changed.');
+      } else {
+        toastError(err, 'Failed to revoke approved reservation');
+      }
+    },
+  });
+
   const releaseBookingMutation = useMutation({
     mutationFn: rpcReleaseBooking,
     onSuccess: () => {
@@ -249,6 +267,7 @@ export function useBookings(filters?: BookingFilters) {
     // Mutations
     requestBooking: requestBookingMutation.mutateAsync,
     decideBooking: decideBookingMutation.mutateAsync,
+    adminCancelBooking: adminCancelBookingMutation.mutateAsync,
     cancelBooking: cancelBookingMutation.mutateAsync,
     releaseBooking: releaseBookingMutation.mutateAsync,
     claimReleasedSlot: claimSlotMutation.mutateAsync,

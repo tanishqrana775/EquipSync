@@ -1,0 +1,61 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+sequenceDiagram
+    autonumber
+    actor Borrower as Borrower (Member)
+    participant UI as React SPA (Discovery & Requests)
+    participant RPC as PostgreSQL SECURITY DEFINER RPCs
+    participant DB as PostgreSQL Database (btree_gist)
+    actor Admin as Organization Admin
+
+    Borrower->>UI: Selects Interval & Submits Booking Request
+    UI->>RPC: request_booking(p_resource_id, p_start, p_end, p_purpose, p_supervisor)
+    RPC->>DB: Asserts caller is_verified_member() & belongs to current_institution_id()
+    RPC->>DB: Validates eligibility_rules (user_type, lead_time, duration, qualifications)
+
+    alt Ungoverned Resource (requires_approval = false)
+        RPC->>DB: Atomic GiST overlap check -> status = 'approved'
+        RPC-->>UI: Booking Created (Status: approved)
+    else Governed Resource (requires_approval = true)
+        RPC->>DB: Sets initial status = 'pending' (Approval Lock Engaged)
+        RPC->>DB: Inserts audit_log ('booking.created')
+        RPC->>DB: Dispatches notification to all organization admins
+        RPC-->>UI: Booking Created (Status: pending)
+    end
+
+    Note over Borrower, Admin: Defensive Lock Phase: Handover Blocked
+    Borrower->>UI: Attempts Early Check-Out while Pending
+    UI->>RPC: check_out_booking(p_booking_id, ...)
+    RPC->>DB: Evaluates status = 'pending'
+    RPC-->>UI: PostgresError: booking_pending_approval (400 Bad Request)
+    UI-->>Borrower: Alert: "Waiting for admin approval. You can check out once approved."
+
+    Note over Admin, DB: Administrative Decision Phase (Row-Level Locking)
+    Admin->>UI: Opens Admin Request Queue (/app/institution/requests)
+    UI-->>Admin: Displays Pending Requests with Overlap Conflict Warnings
+    Admin->>UI: Selects Booking & Enters Decision Note
+    Admin->>RPC: decide_booking(p_booking_id, p_approve, p_note)
+    RPC->>DB: Acquires exclusive row lock: SELECT * FROM bookings FOR UPDATE
+    RPC->>DB: Asserts caller is_institution_admin(booking.institution_id)
+
+    alt Admin Approves (p_approve = true)
+        RPC->>DB: Re-checks GiST overlap against approved/checked_out slots
+        alt Conflicting Slot Found
+            RPC-->>UI: Exception: slot_taken
+        else Slot Free
+            RPC->>DB: Updates status = 'approved', decided_by = admin_id, decided_at = now()
+            RPC->>DB: Logs audit_log ('booking.approved')
+            RPC->>DB: Dispatches in-app notification to borrower
+            RPC-->>UI: Booking Approved
+        end
+    else Admin Rejects (p_approve = false)
+        RPC->>DB: Updates status = 'rejected', decision_note = p_note
+        RPC->>DB: Logs audit_log ('booking.rejected')
+        RPC-->>UI: Booking Rejected
+    end
+
+    alt Admin Emergency Cancellation
+        Admin->>RPC: admin_cancel_booking(p_booking_id, p_note)
+        RPC->>DB: Asserts status in ('pending', 'approved')
+        RPC->>DB: Updates status = 'cancelled', decision_note = p_note
+        RPC->>DB: Re-pools slot to waitlist entries or peer release
+    end

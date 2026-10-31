@@ -77,15 +77,18 @@ export function InstitutionDashboard() {
           tone="info"
           description="Target efficiency > 70%"
         />
-        <StatCard
-          title="Pending Approvals"
-          value={stats.pendingApprovals}
-          icon={AlertTriangle}
-          change={stats.pendingApprovals > 0 ? "Requires owner review" : "All reviewed"}
-          changeType={stats.pendingApprovals > 0 ? "negative" : "neutral"}
-          tone="warning"
-          description="High-tier equipment requests"
-        />
+        <Link to="/app/institution/requests" className="block">
+          <StatCard
+            title="Pending Approvals"
+            value={stats.pendingApprovals}
+            icon={AlertTriangle}
+            change={stats.pendingApprovals > 0 ? "Requires owner review" : "All reviewed"}
+            changeType={stats.pendingApprovals > 0 ? "negative" : "neutral"}
+            tone="warning"
+            description="Open request queue"
+            className="cursor-pointer hover:border-primary/50 transition-all"
+          />
+        </Link>
       </div>
 
       {/* Main Grid: Active Reservations & Live Custody Feed */}

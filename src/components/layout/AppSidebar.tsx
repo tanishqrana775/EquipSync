@@ -22,9 +22,11 @@ import {
   CheckCircle2,
   HelpCircle,
   Globe,
+  ClipboardList,
 } from 'lucide-react';
 import { NavLink, Link } from 'react-router-dom';
 import { useAuth } from '@/providers/AuthProvider';
+import { useInstitutionStats } from '@/hooks/useInstitutionStats';
 import { Sidebar, useSidebar } from '@/components/ui/sidebar';
 import { LiveBadge } from '@/components/shared/LiveBadge';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +75,7 @@ export function AppSidebar() {
 
 
   const isInstitution = role === 'institution';
+  const { stats } = useInstitutionStats();
 
   const navItems: NavItemDef[] = isInstitution
     ? [
@@ -80,6 +83,12 @@ export function AppSidebar() {
           label: 'Organization Overview',
           to: '/app/institution',
           icon: LayoutDashboard,
+        },
+        {
+          label: 'Request queue',
+          to: '/app/institution/requests',
+          icon: ClipboardList,
+          badge: stats?.pendingApprovals > 0 ? String(stats.pendingApprovals) : undefined,
         },
         {
           label: 'Resource Management',

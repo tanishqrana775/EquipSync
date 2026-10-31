@@ -1,0 +1,60 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#EEF4FF', 'primaryTextColor': '#0B1B3A', 'primaryBorderColor': '#1F5BFF', 'lineColor': '#475569', 'fontFamily': 'Segoe UI' }}}%%
+flowchart TB
+    subgraph S1 ["Stage 1: Enterprise Organization Onboarding & Domain Proof"]
+        A1["Admin Submits B2B Form<br/>(Name, Type, Web, Phone, Reg ID, Job Title)"] --> A2["Live Name Uniqueness Check<br/>(organization_name_available RPC)"]
+        A2 --> A3["Email OTP Activation & Domain Proof<br/>(Domain alignment verified -> status 'active')"]
+    end
+
+    subgraph S2 ["Stage 2: Member Discovery & Dual Verification Gate"]
+        B1["User Registers with Organization Email"] --> B2{"Allowed Domain Match?"}
+        B2 -- Yes --> B3["Auto-Verified Member<br/>(verification_method: 'domain')"]
+        B2 -- No / External --> B4["Manual Admin Queue<br/>(verify_member RPC -> 'admin')"]
+        B3 --> B5["Discover Catalog<br/>(Walled Garden Scoped to Tenant)"]
+        B4 --> B5
+    end
+
+    subgraph S3 ["Stage 3 & 4: Qualification Check & Booking Request"]
+        C1["Member Requests Time Slot"] --> C2{"Requires Approval?"}
+        C2 -- No --> C3["Status: approved<br/>(Immediate reservation)"]
+        C2 -- Yes --> C4["Status: pending<br/>(Approval Lock Engaged)"]
+    end
+
+    subgraph S4 ["Stage 5 & 6: Admin Triage & Fair Reallocation"]
+        C4 --> D1["Admin Request Queue<br/>(/app/institution/requests)"]
+        D1 --> D2{"Admin Decision (Row Lock)"}
+        D2 -- Reject --> D3["Status: rejected<br/>(Decision note logged)"]
+        D2 -- Approve --> C3
+        D4["Conflict: slot_taken"] --> D5["Join FIFO Waitlist<br/>(join_waitlist RPC)"]
+        D6["Slot Released Early<br/>(release_booking RPC)"] --> D7["Waitlist Promoted or Peer Claim<br/>(claim_released_slot RPC)"]
+        D7 --> C3
+    end
+
+    subgraph S5 ["Stage 7 & 8: QR Verification & Cryptographic Check-Out"]
+        C3 --> E1["Handover Window Opens (-15m)"]
+        E1 --> E2{"Approval Lock Check"}
+        E2 -- If Pending/Rejected --> E3["HARD BLOCK: booking_pending_approval<br/>(Scanner & Stepper Locked)"]
+        E2 -- If Approved --> E4["Scan Physical QR Code<br/>(verify_asset_qr RPC -> EQS-XXXXXXXXXX)"]
+        E4 --> E5["Capture Multi-Angle Condition Photos<br/>(Canvas 1600px 80% JPEG + Web Crypto SHA-256)"]
+        E5 --> E6["Audit Accessories & Sign Out<br/>(check_out_booking RPC -> checked_out)"]
+    end
+
+    subgraph S6 ["Stage 9 & 10: Return Quality Gate, Hub Audit & Resolution"]
+        E6 --> F1["Return: Scan QR & Re-Photograph Asset"]
+        F1 --> F2["Accessory Checklist & 5-Tier Condition Rating"]
+        F2 --> F3{"Defects or Degradation?"}
+        F3 -- Yes --> F4["Auto-Flag Return & Open Incident<br/>(Severity high/med/low + Admin Alert)"]
+        F3 -- No --> F5["Clean Return Awaiting Sign-Off"]
+        F4 --> F6["Admin Inspection in Custody Hub<br/>(Side-by-side photo comparison & Verify Integrity SHA-256)"]
+        F5 --> F6
+        F6 --> F7{"Admin Inspection Outcome"}
+        F7 -- Clean Sign-Off --> F8["Status: closed<br/>(Incidents resolved no_fault)"]
+        F7 -- Disputed --> F9["Status: disputed<br/>(Adjudicate: borrower/no_fault/shared)"]
+        F9 --> F8
+        F8 --> F10["Full Audit Timeline & Spot Audits<br/>(record_asset_audit & get_custody_chain)"]
+    end
+
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4
+    S4 --> S5
+    S5 --> S6

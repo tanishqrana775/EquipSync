@@ -185,14 +185,35 @@ export function mapDbBookingToUi(b: DbBooking): Booking {
     startTime: b.start_at,
     endTime: b.end_at,
     purpose: b.purpose || 'Academic research & project work',
-    status,
+    status: (b.status as any) || status,
     handoverCode: `HC-${b.id.slice(0, 4).toUpperCase()}`,
     returnCode: `RT-${b.id.slice(-4).toUpperCase()}`,
     chainOfCustodyId: b.id,
     createdAt: b.created_at,
+    supervisorName: b.supervisor_name,
+    decidedBy: b.decided_by,
+    decidedAt: b.decided_at,
+    decisionNote: b.decision_note,
+    start_at: b.start_at,
+    end_at: b.end_at,
+    user_id: b.user_id,
+    resource_id: b.resource_id,
+    resource_name: b.resources?.name,
+    created_at: b.created_at,
+    decided_by: b.decided_by,
+    decided_at: b.decided_at,
+    decision_note: b.decision_note,
+    supervisor_name: b.supervisor_name,
+    resource: b.resources
+      ? {
+          name: b.resources.name,
+          kind: b.resources.kind,
+          category: b.resources.category || undefined,
+          image_path: b.resources.image_path || undefined,
+        }
+      : undefined,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Notification Mapper
 // ---------------------------------------------------------------------------
